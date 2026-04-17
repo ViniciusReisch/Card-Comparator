@@ -73,22 +73,15 @@ export type OfferItem = {
   imageUrl: string | null;
   offerUrl: string | null;
   sellerName: string | null;
+  sellerCountry: string | null;
   storeName: string | null;
   quantity: number | null;
   isNew: boolean;
   isActive: boolean;
+  firstSeenRunId: number | null;
   firstSeenAt: string;
   lastSeenAt: string;
   lastPriceCents: number | null;
-};
-
-export type CardsResponse = {
-  items: CardItem[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-  };
 };
 
 export type OffersResponse = {
@@ -104,6 +97,15 @@ export type OffersResponse = {
 export type CardDetailResponse = CardItem & {
   offersCount: number;
   latestOffers: OfferItem[];
+};
+
+export type CardsResponse = {
+  items: CardItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+  };
 };
 
 export type RunsResponse = {
@@ -128,8 +130,42 @@ export type RunsResponse = {
   }>;
 };
 
+export type MonitorStatusResponse = {
+  currentRunId: number | null;
+  runId: number | null;
+  isRunning: boolean;
+  startedAt: string | null;
+  finishedAt: string | null;
+  currentSource: string | null;
+  currentStage: string;
+  totalCardsEstimated: number | null;
+  processedCards: number;
+  totalOffersFound: number;
+  newOffersFound: number;
+  currentCardName: string | null;
+  currentCardImageUrl: string | null;
+  progressPercent: number | null;
+  message: string;
+  recentNewOffers: OfferItem[];
+  elapsedMs: number;
+  estimatedRemainingMs: number | null;
+  totalSourcesDone: number;
+  lastUpdatedAt: string | null;
+};
+
+export type MonitorEventPayload =
+  | {
+      type: "status";
+      status: MonitorStatusResponse;
+    }
+  | {
+      type: "new-offer";
+      status: MonitorStatusResponse;
+      offer: OfferItem;
+    };
+
 export function formatBrl(priceCents: number | null | undefined): string {
-  if (priceCents == null) return "—";
+  if (priceCents == null) return "-";
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(priceCents / 100);
 }
 
@@ -148,11 +184,24 @@ export function getPrimaryPrice(offer: { priceCents: number; currency: string; p
   return formatBrl(offer.priceCents);
 }
 
-const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3333";
+export function formatElapsed(ms: number | null | undefined): string {
+  if (!ms || ms <= 0) return "0s";
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) return `${hours}h ${minutes}min`;
+  if (minutes > 0) return `${minutes}min ${seconds}s`;
+  return `${seconds}s`;
+}
+
+export const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3333";
+export const monitorEventsUrl = `${apiBaseUrl}/api/monitor/events`;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
-    headers: { "Content-Type": "application/json" },
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     ...init
   });
 
@@ -187,10 +236,16 @@ export const apiClient = {
     const suffix = searchParams?.toString() ? `?${searchParams.toString()}` : "";
     return request<OffersResponse>(`/api/offers${suffix}`);
   },
+  getRecentNewOffers(limit = 12): Promise<{ items: OfferItem[] }> {
+    return request<{ items: OfferItem[] }>(`/api/offers/recent-new?limit=${limit}`);
+  },
   getRuns(): Promise<RunsResponse> {
     return request<RunsResponse>("/api/runs");
   },
-  runMonitor(): Promise<unknown> {
-    return request("/api/monitor/run", { method: "POST" });
+  getMonitorStatus(): Promise<MonitorStatusResponse> {
+    return request<MonitorStatusResponse>("/api/monitor/status");
+  },
+  runMonitor(): Promise<MonitorStatusResponse> {
+    return request<MonitorStatusResponse>("/api/monitor/run", { method: "POST" });
   }
 };

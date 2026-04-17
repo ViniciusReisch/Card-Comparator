@@ -1,19 +1,22 @@
 import { format } from "date-fns";
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { apiClient, formatBrl, type DashboardResponse } from "../api/client";
 import { ConditionBadge } from "../components/ConditionBadge";
 import { LanguageBadge } from "../components/LanguageBadge";
 import { NewOfferBadge } from "../components/NewOfferBadge";
+import { ScraperProgressBar } from "../components/ScraperProgressBar";
 import { SourceBadge } from "../components/SourceBadge";
 import { StatCard } from "../components/StatCard";
+import { useMonitorStatus } from "../hooks/useMonitorStatus";
 
 export function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isRunning, setIsRunning] = useState(false);
-  const navigate = useNavigate();
+  const [triggeringRun, setTriggeringRun] = useState(false);
+  const { status } = useMonitorStatus();
+  const previousRunningRef = useRef(false);
 
   async function loadDashboard() {
     try {
@@ -21,25 +24,39 @@ export function DashboardPage() {
       setError(null);
       const response = await apiClient.getDashboard();
       setData(response);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao carregar dashboard.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Falha ao carregar dashboard.");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { void loadDashboard(); }, []);
+  useEffect(() => {
+    void loadDashboard();
+  }, []);
+
+  useEffect(() => {
+    if (!status) {
+      return;
+    }
+
+    const wasRunning = previousRunningRef.current;
+    previousRunningRef.current = status.isRunning;
+
+    if (wasRunning && !status.isRunning) {
+      void loadDashboard();
+    }
+  }, [status]);
 
   async function handleRunMonitor() {
     try {
-      setIsRunning(true);
+      setTriggeringRun(true);
+      setError(null);
       await apiClient.runMonitor();
-      await loadDashboard();
-      navigate("/runs");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao executar monitor.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Falha ao iniciar monitoramento.");
     } finally {
-      setIsRunning(false);
+      setTriggeringRun(false);
     }
   }
 
@@ -47,60 +64,61 @@ export function DashboardPage() {
     ? formatBrl(data.stats.lowestPrice.priceBrlCents ?? data.stats.lowestPrice.priceCents)
     : null;
 
-  const langDistrib = data?.distributions?.language ?? [];
-  const condDistrib = data?.distributions?.condition ?? [];
-  const totalLang = langDistrib.reduce((s, x) => s + x.count, 0);
-  const totalCond = condDistrib.reduce((s, x) => s + x.count, 0);
+  const languageDistribution = data?.distributions?.language ?? [];
+  const conditionDistribution = data?.distributions?.condition ?? [];
+  const totalLanguageOffers = languageDistribution.reduce((sum, item) => sum + item.count, 0);
+  const totalConditionOffers = conditionDistribution.reduce((sum, item) => sum + item.count, 0);
 
   return (
     <section className="stack">
       <div className="topbar">
         <h2 className="topbar-title">Dashboard</h2>
-        <p className="topbar-sub">Visão geral do monitoramento de Rayquaza</p>
+        <p className="topbar-sub">Visao geral do monitoramento de Rayquaza.</p>
       </div>
 
       <div className="page-content">
         <div className="stack">
-          {/* Hero */}
           <div className="hero-banner">
             <div className="hero-content">
               <h2>Monitor Rayquaza TCG</h2>
-              <p>Coleta e compara anúncios de cards Rayquaza em Liga Pokémon e CardTrader.</p>
+              <p>Coleta e compara anuncios de cards Rayquaza em Liga Pokemon e CardTrader.</p>
             </div>
             <div className="hero-actions">
-              <button className="btn btn-primary" onClick={handleRunMonitor} disabled={isRunning}>
-                {isRunning ? "Executando..." : "▶ Rodar monitoramento"}
+              <button className="btn btn-primary" onClick={handleRunMonitor} disabled={triggeringRun || status?.isRunning}>
+                {status?.isRunning ? "Monitorando..." : triggeringRun ? "Iniciando..." : "Rodar monitoramento agora"}
               </button>
-              <Link className="btn btn-secondary" to="/new-offers">
-                Ver novos anúncios →
+              <Link className="btn btn-secondary" to="/offers">
+                Ver anuncios
               </Link>
             </div>
           </div>
 
+          <ScraperProgressBar status={status} />
+
           {error ? <div className="notice notice-error">{error}</div> : null}
           {loading ? <div className="notice">Carregando dados...</div> : null}
 
-          {data && (
+          {data ? (
             <>
-              {/* Stats */}
               <div className="stats-grid">
                 <StatCard label="Cards monitorados" value={String(data.stats.totalRayquazasMonitored)} />
                 <StatCard label="Ofertas ativas" value={String(data.stats.totalActiveOffers)} />
-                <StatCard label="Novos anúncios" value={String(data.stats.newOffersLastRun)} />
+                <StatCard label="Novos anuncios" value={String(data.stats.newOffersLastRun)} />
                 <StatCard
-                  label="Menor preço (BRL)"
-                  value={lowestBrl ?? "—"}
+                  label="Menor preco (BRL)"
+                  value={lowestBrl ?? "-"}
                   hint={data.stats.lowestPrice?.cardName}
                 />
               </div>
 
-              {/* Last run */}
               <div className="panel">
                 <div className="panel-header">
                   <div>
-                    <div className="panel-title">Última execução</div>
+                    <div className="panel-title">Ultima execucao</div>
                   </div>
-                  <Link to="/runs" className="btn btn-ghost btn-sm">Ver histórico</Link>
+                  <Link to="/runs" className="btn btn-ghost btn-sm">
+                    Ver historico
+                  </Link>
                 </div>
                 {data.stats.latestRun ? (
                   <div className="run-summary-grid">
@@ -122,21 +140,20 @@ export function DashboardPage() {
                     </div>
                   </div>
                 ) : (
-                  <p className="muted">Nenhuma execução concluída ainda. Rode o monitoramento.</p>
+                  <p className="muted">Nenhuma execucao concluida ainda.</p>
                 )}
               </div>
 
-              {/* Distributions */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
                 <div className="panel">
                   <div className="panel-header">
                     <div className="panel-title">Idiomas das ofertas</div>
                   </div>
-                  {langDistrib.length === 0 ? (
+                  {languageDistribution.length === 0 ? (
                     <p className="muted" style={{ fontSize: "0.85rem" }}>Sem dados ainda.</p>
                   ) : (
                     <div className="dist-list">
-                      {langDistrib.slice(0, 8).map((item) => (
+                      {languageDistribution.slice(0, 8).map((item) => (
                         <div key={item.language} className="dist-item">
                           <div className="dist-label">
                             <LanguageBadge value={item.language} />
@@ -144,7 +161,7 @@ export function DashboardPage() {
                           <div className="dist-bar-wrap">
                             <div
                               className="dist-bar"
-                              style={{ width: `${Math.round((item.count / totalLang) * 100)}%` }}
+                              style={{ width: `${Math.round((item.count / totalLanguageOffers) * 100)}%` }}
                             />
                           </div>
                           <div className="dist-count">{item.count}</div>
@@ -158,11 +175,11 @@ export function DashboardPage() {
                   <div className="panel-header">
                     <div className="panel-title">Estados das ofertas</div>
                   </div>
-                  {condDistrib.length === 0 ? (
+                  {conditionDistribution.length === 0 ? (
                     <p className="muted" style={{ fontSize: "0.85rem" }}>Sem dados ainda.</p>
                   ) : (
                     <div className="dist-list">
-                      {condDistrib.map((item) => (
+                      {conditionDistribution.map((item) => (
                         <div key={item.condition} className="dist-item">
                           <div className="dist-label">
                             <ConditionBadge value={item.condition} />
@@ -171,7 +188,7 @@ export function DashboardPage() {
                             <div
                               className="dist-bar"
                               style={{
-                                width: `${Math.round((item.count / totalCond) * 100)}%`,
+                                width: `${Math.round((item.count / totalConditionOffers) * 100)}%`,
                                 background: "var(--green)"
                               }}
                             />
@@ -184,15 +201,16 @@ export function DashboardPage() {
                 </div>
               </div>
 
-              {/* Recent new offers */}
               <div className="panel">
                 <div className="panel-header">
-                  <div className="panel-title">Últimos novos anúncios</div>
-                  <Link to="/new-offers" className="btn btn-ghost btn-sm">Ver todos</Link>
+                  <div className="panel-title">Ultimos novos anuncios</div>
+                  <Link to="/offers" className="btn btn-ghost btn-sm">
+                    Ver todos
+                  </Link>
                 </div>
 
                 {data.recentNewOffers.length === 0 ? (
-                  <p className="muted">Nenhum anúncio novo no momento.</p>
+                  <p className="muted">Nenhum anuncio novo no momento.</p>
                 ) : (
                   <div className="table-list">
                     {data.recentNewOffers.map((offer) => {
@@ -204,13 +222,13 @@ export function DashboardPage() {
                               <SourceBadge source={offer.source} />
                               <LanguageBadge value={offer.languageNormalized} />
                               <ConditionBadge value={offer.conditionNormalized} />
-                              {offer.isNew && <NewOfferBadge />}
+                              {offer.isNew ? <NewOfferBadge /> : null}
                             </div>
                             <span className="list-title">
                               <Link to={`/cards/${offer.cardId}`}>{offer.cardName}</Link>
                             </span>
                             <span className="list-subtitle">
-                              {offer.setName ?? "Coleção n/d"}
+                              {offer.setName ?? "Colecao n/d"}
                               {offer.storeName || offer.sellerName ? ` · ${offer.storeName ?? offer.sellerName}` : ""}
                             </span>
                           </div>
@@ -227,7 +245,7 @@ export function DashboardPage() {
                 )}
               </div>
             </>
-          )}
+          ) : null}
         </div>
       </div>
     </section>
