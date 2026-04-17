@@ -2,7 +2,7 @@
 
 ## Visao geral
 
-O projeto foi dividido em camadas leves para manter manutencao simples e evolucao gradual, sem Docker e sem arquitetura pesada.
+O projeto foi dividido em camadas leves para manter manutencao simples, boa separacao de responsabilidades e evolucao gradual sem Docker e sem framework pesado.
 
 ## Camadas
 
@@ -10,96 +10,117 @@ O projeto foi dividido em camadas leves para manter manutencao simples e evoluca
 
 Contem scrapers, seletores e mappers por fonte.
 
-- `selectors.ts`: centraliza seletores DOM e evita espalhar strings no scraper.
-- `mapper.ts`: transforma dados crus em seeds normalizadas da aplicacao.
-- `scraper.ts`: controla Playwright, delays, paginacao, screenshots e fluxo de coleta.
+- `selectors.ts`: centraliza seletores DOM.
+- `mapper.ts`: transforma dados crus em seeds normalizadas.
+- `scraper.ts`: controla Playwright, fila de detalhes, delays, screenshots e callbacks de progresso.
 
-Fontes implementadas:
-- `ligapokemon/` — scraper com expansao "Ver Mais", deduplicacao por URL, stuck detection
-- `cardtrader/` — scraper com paginacao numerica, extracao de idioma por multiplos seletores
+Fontes atuais:
+
+- `ligapokemon/`
+- `cardtrader/`
 
 ### `normalizers/`
 
 Responsavel por padronizar texto, idioma, estado, preco e chaves canonicas.
 
-- `language-normalizer.ts` — mapeia texto livre para 14 codigos de idioma
-- `condition-normalizer.ts` — mapeia texto livre para 8 codigos de estado (M/NM/EX/SP/MP/PL/PO/UNKNOWN)
-- `text-normalizer.ts` — normaliza strings para comparacao e chaves canonicas
-- `price-normalizer.ts` — converte valores de texto para centavos inteiros
-
-### `services/`
-
-Coordena regras de negocio.
-
-- `currency-converter.ts` — singleton que carrega taxas de cambio do Frankfurter API uma vez por dia e expoe `convertToBrl()` sincrono. Cache em `storage/exchange-rate-cache.json`.
-- `diff.service.ts` — persiste cards e ofertas, decide o que e novo, chama `convertToBrl()` antes de cada upsert.
-- `run.service.ts` — registra `monitor_runs` e `monitor_run_sources`.
-- `monitor.service.ts` — orquestra scrapers, inicializa `currencyConverter`, persiste resultados e produz resumo final.
+- `language-normalizer.ts`
+- `condition-normalizer.ts`
+- `price-normalizer.ts`
+- `text-normalizer.ts`
+- `offer-key.ts`
 
 ### `db/`
 
 Contem schema SQLite, migracoes, conexao e repositorios.
 
-- `database.ts` — abre a conexao e aplica pragmas (WAL, foreign keys).
-- `migrations.ts` — executa `schema.sql` e aplica migracoes incrementais.
-- `repositories/` — encapsula queries e regras de upsert/leitura por entidade.
+- `database.ts`: conexao e pragmas.
+- `migrations.ts`: schema + migracoes incrementais.
+- `repositories/`: queries e regras de upsert.
+
+### `services/`
+
+Coordena regras de negocio.
+
+- `monitor.service.ts`: orquestra execucoes e fontes.
+- `monitor-status.service.ts`: estado em memoria + SSE.
+- `diff.service.ts`: persiste cards/ofertas e decide o que e novo.
+- `run.service.ts`: registra execucoes e snapshots de progresso.
+- `currency-converter.ts`: converte preco para BRL com cache diario.
 
 ### `api/`
 
-Expoe dados locais por HTTP usando Express.
+Expoe dados locais por HTTP com Express.
 
-- `routes/` — rotas agrupadas por recurso (cards, offers, dashboard, runs, monitor).
-- `route-helpers.ts` — mapeamento de registros do banco para DTOs da API (inclui campos BRL).
+- `dashboard.routes.ts`
+- `cards.routes.ts`
+- `offers.routes.ts`
+- `monitor.routes.ts`
+- `runs.routes.ts`
 
 ### `app/`
 
-Interface React consumindo a API local via Vite.
+Interface React com Vite.
 
-- `pages/` — DashboardPage, CardsPage, CardDetailPage, NewOffersPage, RunsPage
-- `components/` — Layout, FiltersBar, CardTile, OfferTable, OfferCard, LanguageBadge, ConditionBadge, SourceBadge, StatCard
-- `api/client.ts` — wrapper fetch com helpers `formatBrl()`, `formatOriginalPrice()`, `getPrimaryPrice()`
-- `styles/global.css` — design system com CSS custom properties, badges, grid
-
-### `config/`
-
-Carrega e valida variaveis de ambiente via zod.
+- `pages/`: dashboard, anuncios, cards, detalhe e execucoes.
+- `components/`: filtros, badges, tabelas, layout e barra de progresso.
+- `hooks/useMonitorStatus.ts`: consome SSE com fallback para polling.
 
 ## Fluxo de monitoramento
 
-1. O monitor inicia uma nova execucao em `monitor_runs`.
-2. `currencyConverter.initialize()` busca taxas do dia (cache ou API).
-3. O sistema limpa o marcador `is_new` das ofertas anteriores.
-4. Cada fonte e processada separadamente.
-5. O scraper abre a pagina de busca, encontra cards e entra no detalhe de cada um.
-6. O mapper transforma os dados crus em tipos normalizados (idioma, estado, preco).
-7. O diff chama `currencyConverter.convertToBrl()` e persiste cards e ofertas.
-8. Novas ofertas recebem `is_new = true`.
-9. Ofertas conhecidas atualizam `last_seen_at` e `price_brl_cents`.
-10. Mudancas de preco geram entrada em `price_history` com campos BRL.
-11. Ofertas ausentes por 3 execucoes seguidas viram `is_active = false`.
-12. O resumo final da execucao e salvo no banco e exposto na API.
+1. `POST /api/monitor/run` inicia uma execucao em background.
+2. `monitor.service.ts` cria `monitor_runs` e publica estado inicial.
+3. `currency-converter.ts` carrega as taxas do dia.
+4. `diff.service.ts` limpa `is_new` da execucao anterior.
+5. Cada fonte abre a busca, coleta a listagem e deduplica os cards.
+6. O scraper separa a fila em `newCardsQueue` e `knownCardsQueue`.
+7. Os detalhes sao processados primeiro para cards novos.
+8. Cada card raspado e persistido imediatamente.
+9. Quando uma oferta nova aparece:
+   - entra no banco na hora
+   - atualiza `new_offers_found`
+   - entra em `recentNewOffers`
+   - dispara evento SSE
+10. O frontend recebe esse evento e atualiza o progresso e a tabela de anuncios.
+11. No fim da fonte, o monitor reconciliia ofertas ausentes e fecha `monitor_run_sources`.
+12. No fim da execucao, atualiza `monitor_runs`, publica `FINISHED` ou `FAILED` e mantem o ultimo snapshot salvo.
 
-## Fluxo de conversao BRL
+## Tela Anuncios
 
-```
-monitor.service → currencyConverter.initialize()
-                       ↓
-              Verifica cache (storage/exchange-rate-cache.json)
-                       ↓
-        Cache do dia existe? → usa taxas do cache
-        Nao existe?          → GET api.frankfurter.app/latest?from=EUR
-                                 ↓ falha?
-                             usa taxas de fallback embutidas
-                       ↓
-diff.service → currencyConverter.convertToBrl(priceCents, currency)
-            → retorna { priceBrlCents, rate, date }
-            → salva nos campos original_price_cents, price_brl_cents, etc.
-```
+`Anuncios` virou a central unica de ofertas.
 
-## Decisoes de design
+- rota principal: `/offers`
+- alias: `/anuncios`
+- filtro padrao: `newOnly=true`
+- comportamento: ao desmarcar, a tela mostra todos os anuncios ativos
 
-- **Sem ORM**: queries diretas com better-sqlite3 para manter controle total e sem overhead.
-- **Sem heavy framework**: Express puro, React com CSS custom properties, sem Tailwind/MUI.
-- **Singleton currency converter**: inicializado uma vez por run para evitar chamadas multiplas.
-- **Migrations idempotentes**: `ALTER TABLE` com try-catch para nao quebrar em bases existentes.
-- **Dois tsconfig**: `tsconfig.json` para o servidor (CommonJS) e `tsconfig.app.json` para o app React (ESM).
+## Progresso em tempo real
+
+O backend mantem um snapshot com:
+
+- `currentRunId`
+- `isRunning`
+- `currentSource`
+- `currentStage`
+- `totalCardsEstimated`
+- `processedCards`
+- `totalOffersFound`
+- `newOffersFound`
+- `currentCardName`
+- `currentCardImageUrl`
+- `recentNewOffers`
+
+Esse snapshot e servido por `GET /api/monitor/status` e transmitido por `GET /api/monitor/events`.
+
+## Estrategia de estimativa
+
+- Antes de conhecer o total real, o monitor usa o ultimo `monitor_run` concluido como referencia.
+- Quando a listagem de uma fonte termina, o total real dessa fonte substitui a estimativa.
+- O progresso percentual usa `processedCards / totalCardsEstimated`.
+- Quando ainda nao ha total suficiente, a UI usa barra indeterminada.
+
+## Velocidade e seguranca
+
+- `DETAIL_CONCURRENCY` controla quantos detalhes podem ser raspados ao mesmo tempo.
+- `CARD_DETAIL_TIMEOUT_MS` evita que um card lento bloqueie toda a fila.
+- `SCRAPER_FAST_MODE` reduz waits fixos, mas mantem delays responsaveis.
+- Cada erro de card salva screenshot e nao derruba a execucao inteira.

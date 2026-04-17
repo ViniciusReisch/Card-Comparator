@@ -8,58 +8,57 @@
 
 ## Execucao responsavel
 
-- Respeite `REQUEST_DELAY_MS` entre requisicoes.
-- Evite aumentar `DETAIL_CONCURRENCY` sem necessidade.
-- Nao rode o monitor em loop continuo ou em intervalos muito curtos.
-- Use `LIGA_MAX_VER_MAIS_CLICKS` para limitar quantas vezes o botao "Ver Mais" sera clicado.
+- Respeite `REQUEST_DELAY_MS`.
+- Use `DETAIL_CONCURRENCY=1` como padrao seguro.
+- So aumente para `2` ou `3` se estiver validando com cuidado.
+- `SCRAPER_FAST_MODE=true` acelera waits, mas nao remove o comportamento responsavel.
+- `CARD_DETAIL_TIMEOUT_MS` evita que um card lento bloqueie toda a execucao.
 
-## Liga Pokemon — scraper "Ver Mais"
+## Prioridade para cards novos
 
-O scraper expande a lista clicando em "Ver Mais" de forma controlada:
+Ao terminar a listagem de uma fonte, o scraper separa:
 
-1. Conta os cards visiveis antes do clique (`countCards()`).
-2. Rola a tela ate o botao para garanti-lo na area visivel.
-3. Tenta o clique nativo do Playwright.
-4. Se falhar, tenta `element.evaluate(el => el.click())` no DOM.
-5. Aguarda `networkidle` ou timeout de 3 segundos.
-6. Conta os cards novamente. Se o numero nao aumentou, incrementa `stuckCount`.
-7. Quando `stuckCount >= 3`, encerra a expansao (stuck detection).
-8. Apos terminar a expansao, deduplica as URLs antes de entrar nos detalhes.
+- `newCardsQueue`
+- `knownCardsQueue`
 
-Se o botao mudar de seletor, atualize `selectors.ts` da fonte `ligapokemon`.
+Os cards novos vao primeiro para que as ofertas novas aparecam na interface o quanto antes.
 
-## CardTrader — extracao de idioma
+## SSE e salvamento incremental
 
-O idioma de cada oferta e extraido tentando os seguintes seletores em ordem:
+Cada card raspado e persistido imediatamente.
 
-1. `td.products-table__info--language` — celula dedicada de idioma.
-2. `[data-original-title]` — tooltip Bootstrap.
-3. `[title]` — atributo title generico.
-4. Fallback para `UNKNOWN` se nenhum encontrar texto util.
+Quando uma oferta nova aparece:
 
-Se o CardTrader mudar sua estrutura HTML, ajuste os seletores em `cardtrader.scraper.ts`.
+1. ela entra no SQLite na hora
+2. o contador de novidades e atualizado
+3. `recentNewOffers` recebe o item
+4. o backend dispara evento SSE
+5. a tela `Anuncios` pode inserir o item no topo sem esperar o fim da execucao
+
+## Liga Pokemon
+
+O scraper:
+
+1. abre a busca
+2. tenta expandir `Ver Mais`
+3. para quando o botao some, desabilita ou o total de cards nao cresce
+4. deduplica URLs antes de entrar em detalhe
+5. salva screenshot se um card falhar
+
+## CardTrader
+
+O scraper:
+
+1. resolve a listagem configurada
+2. deduplica cards identicos
+3. entra no detalhe de cada card
+4. extrai idioma, estado, preco, vendedor, pais e quantidade
+5. salva screenshot se um card falhar
 
 ## Quando algo quebrar
 
-- Consulte logs do terminal (cada card e fonte tem log de erro isolado).
-- Verifique screenshots em `storage/screenshots/` — o scraper salva uma captura quando algo falha.
-- Ajuste primeiro `selectors.ts` da fonte afetada.
-- Ajuste `mapper.ts` quando a estrutura textual mudar (novos textos de idioma, estado, etc.).
-- Preserve o tratamento de erro por card e por fonte — um erro num card nao deve parar a coleta dos outros.
-
-## Mudancas de DOM
-
-Seletores podem mudar com o tempo. Quando isso acontecer:
-
-1. Atualize o `selectors.ts` da fonte.
-2. Revise o `mapper.ts` para novos textos ou campos.
-3. Rode `npm run monitor`.
-4. Confirme se a API e a interface continuam funcionando corretamente.
-
-## Adicionar uma nova fonte
-
-1. Crie uma pasta em `src/sources/<nome-da-fonte>/`.
-2. Implemente `selectors.ts`, `mapper.ts` e `scraper.ts` seguindo o padrao das fontes existentes.
-3. O mapper deve retornar `RawCard[]` e `RawOffer[]` normalizados.
-4. Registre a nova fonte em `monitor.service.ts`.
-5. Adicione a fonte na documentacao e nos filtros da UI.
+- Consulte os logs do terminal.
+- Verifique `storage/screenshots/`.
+- Ajuste primeiro `selectors.ts`.
+- Ajuste depois `mapper.ts`.
+- Mantenha o tratamento de erro por card para nao derrubar a execucao inteira.
