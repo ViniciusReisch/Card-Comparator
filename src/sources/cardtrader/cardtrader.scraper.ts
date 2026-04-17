@@ -1,9 +1,12 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { chromium, type APIRequestContext, type Page } from "playwright";
+import { CardRepository } from "../../db/repositories/card.repository";
 import { env } from "../../config/env";
 import { monitorConfig } from "../../config/monitor.config";
-import type { SourceScrapeResult } from "../../domain/card.types";
+import type { ScrapedCardSeed, SourceScrapeResult } from "../../domain/card.types";
+import type { SourceScraperHooks } from "../../domain/scraper.types";
+import { buildCanonicalCardKey } from "../../normalizers/offer-key";
 import { slugifyText } from "../../normalizers/text-normalizer";
 import {
   mapCardTraderCard,
@@ -21,10 +24,67 @@ type CardTraderBlueprintPoolItem = {
   cn?: number | string | null;
 };
 
+type QueuedCardTraderCard = {
+  listing: CardTraderListingRaw;
+  cardIsNew: boolean;
+};
+
+const cardRepository = new CardRepository();
+
+function getRequestDelayMs(): number {
+  if (!monitorConfig.delays.fastMode) {
+    return monitorConfig.delays.requestMs;
+  }
+
+  return Math.max(300, Math.round(monitorConfig.delays.requestMs * 0.35));
+}
+
 function extractCardIdFromUrl(value: string | null): string | null {
   if (!value) return null;
-  const match = value.match(/\/products\/(\d+)/i) ?? value.match(/\/(\d+)(?:[/?#]|$)/);
+  const match = value.match(/\/cards\/([^/?#]+)/i) ?? value.match(/\/products\/(\d+)/i) ?? value.match(/\/(\d+)(?:[/?#]|$)/);
   return match?.[1] ?? null;
+}
+
+function buildListingSeed(listing: CardTraderListingRaw): ScrapedCardSeed {
+  return {
+    source: "CARDTRADER",
+    sourceCardId: listing.sourceCardId ?? extractCardIdFromUrl(listing.detailUrl),
+    name: listing.name ?? "Rayquaza",
+    setName: listing.setName,
+    setCode: listing.setCode,
+    year: listing.year,
+    number: listing.number,
+    rarity: listing.rarity,
+    imageUrl: listing.imageUrl,
+    detailUrl: listing.detailUrl,
+    raw: listing.raw
+  };
+}
+
+function splitCardsByKnownState(cards: CardTraderListingRaw[]): {
+  newCardsQueue: QueuedCardTraderCard[];
+  knownCardsQueue: QueuedCardTraderCard[];
+} {
+  const newCardsQueue: QueuedCardTraderCard[] = [];
+  const knownCardsQueue: QueuedCardTraderCard[] = [];
+
+  for (const listing of cards) {
+    const seed = buildListingSeed(listing);
+    const canonicalCardKey = buildCanonicalCardKey(seed);
+    const existing = cardRepository.findByIdentity({
+      source: seed.source,
+      sourceCardId: seed.sourceCardId ?? canonicalCardKey,
+      canonicalCardKey
+    });
+
+    if (existing) {
+      knownCardsQueue.push({ listing, cardIsNew: false });
+    } else {
+      newCardsQueue.push({ listing, cardIsNew: true });
+    }
+  }
+
+  return { newCardsQueue, knownCardsQueue };
 }
 
 function decodeBlueprintIds(searchUrl: string): Set<number> {
@@ -36,8 +96,8 @@ function decodeBlueprintIds(searchUrl: string): Set<number> {
       Buffer.from(encodedIds, "base64")
         .toString("utf8")
         .split(",")
-        .map((v) => Number(v))
-        .filter((v) => Number.isFinite(v))
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value))
     );
   } catch {
     return new Set();
@@ -110,7 +170,11 @@ async function extractDetail(page: Page): Promise<CardTraderDetailRaw> {
     let props: Record<string, unknown> | null = null;
 
     if (propsText) {
-      try { props = JSON.parse(propsText) as Record<string, unknown>; } catch { props = null; }
+      try {
+        props = JSON.parse(propsText) as Record<string, unknown>;
+      } catch {
+        props = null;
+      }
     }
 
     const blueprint =
@@ -154,7 +218,6 @@ async function extractDetail(page: Page): Promise<CardTraderDetailRaw> {
       const sellerFallback = sellerAnchor?.textContent?.replace(/\s+/g, " ").trim() ?? "";
       const sellerText = sellerDesktop || sellerMobile || sellerFallback || null;
 
-      // Language: try multiple selectors to capture all language variants
       const langCell = row.querySelector<HTMLElement>("td.products-table__info--language, td[class*='language']");
       const langElement =
         langCell?.querySelector<HTMLElement>("[data-original-title], [title], .flag-icon, [class*='flag'], span") ??
@@ -169,7 +232,6 @@ async function extractDetail(page: Page): Promise<CardTraderDetailRaw> {
         langCell?.getAttribute("title") ??
         null;
 
-      // Condition
       const conditionElement = row.querySelector<HTMLElement>(
         ".products-table__info--condition [data-original-title], .products-table__info--condition .badge"
       );
@@ -260,7 +322,26 @@ async function saveFailureScreenshot(page: Page, name: string): Promise<string |
   }
 }
 
-export async function scrapeCardTrader(): Promise<SourceScrapeResult> {
+async function scrapeDetailCard(page: Page, queuedCard: QueuedCardTraderCard): Promise<ReturnType<typeof mapCardTraderCard>> {
+  await page.goto(queuedCard.listing.detailUrl!, {
+    waitUntil: "domcontentloaded",
+    timeout: monitorConfig.monitor.cardDetailTimeoutMs
+  });
+  await page.waitForSelector("[data-react-class='ProductsIndexApp']", {
+    timeout: Math.min(10_000, monitorConfig.monitor.cardDetailTimeoutMs)
+  });
+  await page.waitForSelector("tr[data-product-id]", {
+    timeout: Math.min(8_000, monitorConfig.monitor.cardDetailTimeoutMs)
+  }).catch(() => undefined);
+  await page.waitForLoadState("networkidle", {
+    timeout: Math.min(5_000, monitorConfig.monitor.cardDetailTimeoutMs)
+  }).catch(() => undefined);
+  await page.waitForTimeout(getRequestDelayMs());
+  const detail = await extractDetail(page);
+  return mapCardTraderCard(queuedCard.listing, detail);
+}
+
+export async function scrapeCardTrader(hooks?: SourceScraperHooks): Promise<SourceScrapeResult> {
   const browser = await chromium.launch({
     headless: env.HEADLESS,
     slowMo: monitorConfig.delays.slowMo
@@ -269,57 +350,114 @@ export async function scrapeCardTrader(): Promise<SourceScrapeResult> {
 
   try {
     const page = await browser.newPage();
-    page.setDefaultTimeout(20_000);
-    console.log("[cardtrader] abrindo pagina de busca");
+    page.setDefaultTimeout(monitorConfig.monitor.cardDetailTimeoutMs);
+    page.setDefaultNavigationTimeout(monitorConfig.monitor.cardDetailTimeoutMs);
 
+    await hooks?.onStageChange?.({
+      source: "CARDTRADER",
+      stage: "LOADING_CARDTRADER_RESULTS",
+      message: "Abrindo busca do CardTrader..."
+    });
+
+    console.log("[cardtrader] abrindo pagina de busca");
     await page.goto(monitorConfig.sources.cardtrader.searchUrl, {
       waitUntil: "domcontentloaded",
       timeout: 30_000
     });
     await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
-    await page.waitForTimeout(env.REQUEST_DELAY_MS);
+
+    await hooks?.onStageChange?.({
+      source: "CARDTRADER",
+      stage: "PAGINATING_CARDTRADER",
+      message: "Resolvendo pool de cards do CardTrader..."
+    });
 
     const listingCards = await fetchListingCards(page.context().request, monitorConfig.sources.cardtrader.searchUrl);
     console.log(`[cardtrader] ${listingCards.length} cards resolvidos do blueprint pool`);
 
-    const results = [];
+    const { newCardsQueue, knownCardsQueue } = splitCardsByKnownState(listingCards);
+    const queue = [...newCardsQueue, ...knownCardsQueue];
+    const totalCards = queue.length;
+    console.log(`[cardtrader] cards novos: ${newCardsQueue.length}, conhecidos: ${knownCardsQueue.length}`);
+    console.log(`[cardtrader] ordem de processamento prioriza ${newCardsQueue.length} cards novos`);
 
-    for (const listing of listingCards) {
-      if (!listing.detailUrl) continue;
+    await hooks?.onStageChange?.({
+      source: "CARDTRADER",
+      stage: "COLLECTING_CARDTRADER_CARDS",
+      message: `Lista do CardTrader pronta com ${totalCards} cards.`,
+      totalCardsDiscovered: totalCards,
+      totalCards
+    });
 
+    const results: SourceScrapeResult["cards"] = [];
+    let cursor = 0;
+    let processedCards = 0;
+    const workerCount = Math.max(1, Math.min(monitorConfig.monitor.detailConcurrency, totalCards || 1));
+
+    async function worker(workerIndex: number): Promise<void> {
       const detailPage = await browser.newPage();
-      detailPage.setDefaultTimeout(20_000);
+      detailPage.setDefaultTimeout(monitorConfig.monitor.cardDetailTimeoutMs);
+      detailPage.setDefaultNavigationTimeout(monitorConfig.monitor.cardDetailTimeoutMs);
 
       try {
-        console.log(`[cardtrader] scraping ${listing.detailUrl}`);
-        await detailPage.goto(listing.detailUrl, {
-          waitUntil: "domcontentloaded",
-          timeout: 30_000
-        });
-        await detailPage.waitForSelector("[data-react-class='ProductsIndexApp']", { timeout: 10_000 });
-        await detailPage.waitForSelector("tr[data-product-id]", { timeout: 8_000 }).catch(() => undefined);
-        await detailPage.waitForTimeout(env.REQUEST_DELAY_MS);
+        while (true) {
+          const currentIndex = cursor;
+          const queuedCard = queue[currentIndex];
+          if (!queuedCard) break;
+          cursor += 1;
 
-        const detail = await extractDetail(detailPage);
-        console.log(`[cardtrader] ${listing.name ?? "?"} → ${detail.offers.length} ofertas`);
-        results.push(mapCardTraderCard(listing, detail));
-      } catch (error) {
-        const screenshotPath = await saveFailureScreenshot(detailPage, listing.name ?? "rayquaza");
-        const message = error instanceof Error ? error.message : "Unknown CardTrader detail error";
-        errors.push(
-          `[cardtrader] falha ${listing.detailUrl}: ${message}${screenshotPath ? ` (screenshot: ${screenshotPath})` : ""}`
-        );
-        console.error(errors[errors.length - 1]);
+          const currentName = queuedCard.listing.name ?? "Rayquaza";
+          await hooks?.onStageChange?.({
+            source: "CARDTRADER",
+            stage: "SCRAPING_CARDTRADER_CARD_DETAILS",
+            message: `Coletando ofertas do card ${currentName} no CardTrader...`,
+            currentCardName: currentName,
+            currentCardImageUrl: queuedCard.listing.imageUrl,
+            processedCards,
+            totalCards
+          });
+
+          try {
+            const mappedCard = await scrapeDetailCard(detailPage, queuedCard);
+            processedCards += 1;
+            console.log(`[cardtrader] worker ${workerIndex} -> ${mappedCard.name} (${mappedCard.offers.length} ofertas)`);
+            results.push(mappedCard);
+            await hooks?.onCardScraped?.(mappedCard, {
+              source: "CARDTRADER",
+              processedCards,
+              totalCards,
+              cardIsNew: queuedCard.cardIsNew
+            });
+          } catch (error) {
+            processedCards += 1;
+            const screenshotPath = await saveFailureScreenshot(detailPage, currentName);
+            const message = error instanceof Error ? error.message : "Unknown CardTrader detail error";
+            errors.push(
+              `[cardtrader] falha ${queuedCard.listing.detailUrl}: ${message}${screenshotPath ? ` (screenshot: ${screenshotPath})` : ""}`
+            );
+            console.error(errors[errors.length - 1]);
+          }
+
+          await hooks?.onStageChange?.({
+            source: "CARDTRADER",
+            stage: "SCRAPING_CARDTRADER_CARD_DETAILS",
+            message: `CardTrader: ${processedCards}/${totalCards} cards processados.`,
+            processedCards,
+            totalCards
+          });
+        }
       } finally {
         await detailPage.close().catch(() => undefined);
       }
     }
 
+    await Promise.all(Array.from({ length: workerCount }, (_, index) => worker(index + 1)));
+
     if (results.length === 0) {
       errors.push("[cardtrader] nenhum card coletado");
     }
 
-    const totalOffers = results.reduce((s, r) => s + r.offers.length, 0);
+    const totalOffers = results.reduce((sum, card) => sum + card.offers.length, 0);
     console.log(`[cardtrader] finalizou: ${results.length} cards, ${totalOffers} ofertas`);
 
     return {
@@ -331,7 +469,12 @@ export async function scrapeCardTrader(): Promise<SourceScrapeResult> {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown CardTrader scraper error";
     console.error(`[cardtrader] erro fatal: ${message}`);
-    return { source: "CARDTRADER", status: "error", cards: [], errors: [message] };
+    return {
+      source: "CARDTRADER",
+      status: "error",
+      cards: [],
+      errors: [message]
+    };
   } finally {
     await browser.close().catch(() => undefined);
   }
