@@ -29,7 +29,7 @@ export class RunService {
 
   assertCanRun(): void {
     if (this.repository.isAnyRunRunning()) {
-      throw new Error("A monitor run is already in progress.");
+      this.repository.recoverStaleRuns("Recovered stale running monitor after process restart.");
     }
   }
 

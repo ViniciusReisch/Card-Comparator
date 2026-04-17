@@ -179,4 +179,38 @@ export class RunRepository {
 
     return row.count > 0;
   }
+
+  recoverStaleRuns(reason: string): void {
+    const finishedAt = new Date().toISOString();
+
+    this.database
+      .prepare(
+        `
+          UPDATE monitor_runs
+          SET
+            status = 'error',
+            finished_at = @finishedAt,
+            error_message = COALESCE(error_message, @reason),
+            duration_ms = CASE
+              WHEN started_at IS NOT NULL
+                THEN MAX(0, CAST((julianday(@finishedAt) - julianday(started_at)) * 86400000 AS INTEGER))
+              ELSE duration_ms
+            END
+          WHERE status = 'running'
+        `
+      )
+      .run({ finishedAt, reason });
+
+    this.database
+      .prepare(
+        `
+          UPDATE monitor_run_sources
+          SET
+            status = 'error',
+            error_message = COALESCE(error_message, @reason)
+          WHERE status = 'running'
+        `
+      )
+      .run({ reason });
+  }
 }
