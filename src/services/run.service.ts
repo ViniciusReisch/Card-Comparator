@@ -66,7 +66,7 @@ export class RunService {
   completeSource(
     sourceRunId: number,
     input: Omit<SourceRunSummary, "id" | "source">
-  ): Omit<SourceRunSummary, "id"> {
+  ): void {
     this.repository.completeSourceRun({
       sourceRunId,
       status: input.status,
@@ -75,8 +75,6 @@ export class RunService {
       newOffersFound: input.newOffersFound,
       errorMessage: input.errorMessage
     });
-
-    return input;
   }
 
   completeRun(input: Omit<MonitorRunSummary, "startedAt" | "sources"> & { startedAt: string; sources: SourceRunSummary[] }): MonitorRunSummary {
@@ -93,4 +91,3 @@ export class RunService {
     return input;
   }
 }
-

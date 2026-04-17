@@ -118,6 +118,20 @@ export class RunRepository {
       .get() as MonitorRunRecord | undefined;
   }
 
+  listRuns(limit = 50): MonitorRunRecord[] {
+    return this.database
+      .prepare("SELECT * FROM monitor_runs ORDER BY started_at DESC LIMIT ?")
+      .all(limit) as MonitorRunRecord[];
+  }
+
+  listSourceRuns(runId: number): MonitorRunSourceRecord[] {
+    return this.database
+      .prepare(
+        "SELECT * FROM monitor_run_sources WHERE run_id = ? ORDER BY source ASC"
+      )
+      .all(runId) as MonitorRunSourceRecord[];
+  }
+
   isAnyRunRunning(): boolean {
     const row = this.database
       .prepare("SELECT COUNT(*) AS count FROM monitor_runs WHERE status = 'running'")
@@ -126,4 +140,3 @@ export class RunRepository {
     return row.count > 0;
   }
 }
-

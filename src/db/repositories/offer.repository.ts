@@ -65,8 +65,113 @@ export type OfferUpsertResult = {
   priceChanged: boolean;
 };
 
+export type OfferListFilters = {
+  source?: string;
+  language?: string;
+  condition?: string;
+  minPriceCents?: number;
+  maxPriceCents?: number;
+  collection?: string;
+  year?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  onlyNew?: boolean;
+  onlyActive?: boolean;
+  cardGroup?: {
+    name: string;
+    setName: string | null;
+    year: number | null;
+    number: string | null;
+  };
+  page: number;
+  limit: number;
+};
+
+export type OfferListRecord = OfferRecord & {
+  card_number: string | null;
+  card_image_url: string | null;
+  origin_card_id: number;
+};
+
 export class OfferRepository {
   private readonly database = getDatabase();
+
+  private buildWhereClause(filters: Omit<OfferListFilters, "page" | "limit">): {
+    whereSql: string;
+    params: unknown[];
+  } {
+    const conditions = ["1 = 1"];
+    const params: unknown[] = [];
+
+    if (filters.source) {
+      conditions.push("o.source = ?");
+      params.push(filters.source);
+    }
+
+    if (filters.language) {
+      conditions.push("o.language_normalized = ?");
+      params.push(filters.language);
+    }
+
+    if (filters.condition) {
+      conditions.push("o.condition_normalized = ?");
+      params.push(filters.condition);
+    }
+
+    if (typeof filters.minPriceCents === "number") {
+      conditions.push("o.price_cents >= ?");
+      params.push(filters.minPriceCents);
+    }
+
+    if (typeof filters.maxPriceCents === "number") {
+      conditions.push("o.price_cents <= ?");
+      params.push(filters.maxPriceCents);
+    }
+
+    if (filters.collection) {
+      conditions.push("LOWER(COALESCE(o.set_name, '')) LIKE ?");
+      params.push(`%${filters.collection.toLowerCase()}%`);
+    }
+
+    if (typeof filters.year === "number") {
+      conditions.push("o.year = ?");
+      params.push(filters.year);
+    }
+
+    if (filters.dateFrom) {
+      conditions.push("o.first_seen_at >= ?");
+      params.push(filters.dateFrom);
+    }
+
+    if (filters.dateTo) {
+      conditions.push("o.first_seen_at <= ?");
+      params.push(filters.dateTo);
+    }
+
+    if (filters.onlyNew) {
+      conditions.push("o.is_new = 1");
+    }
+
+    if (filters.onlyActive !== false) {
+      conditions.push("o.is_active = 1");
+    }
+
+    if (filters.cardGroup) {
+      conditions.push("LOWER(o.card_name) = LOWER(?)");
+      params.push(filters.cardGroup.name);
+      conditions.push("COALESCE(LOWER(o.set_name), '') = ?");
+      params.push((filters.cardGroup.setName ?? "").toLowerCase());
+      conditions.push("COALESCE(o.year, -1) = ?");
+      params.push(filters.cardGroup.year ?? -1);
+      conditions.push("COALESCE(LOWER(c.number), '') = ?");
+      params.push((filters.cardGroup.number ?? "").toLowerCase());
+    }
+
+    return {
+      whereSql: conditions.join(" AND "),
+      params
+    };
+  }
 
   resetNewFlags(): void {
     this.database.prepare("UPDATE offers SET is_new = 0").run();
@@ -267,5 +372,105 @@ export class OfferRepository {
 
     statement.run(source, ...seenOfferIds);
   }
-}
 
+  listOffers(filters: OfferListFilters): {
+    items: OfferListRecord[];
+    total: number;
+    page: number;
+    limit: number;
+  } {
+    const page = Math.max(filters.page, 1);
+    const limit = Math.min(Math.max(filters.limit, 1), 200);
+    const offset = (page - 1) * limit;
+    const { whereSql, params } = this.buildWhereClause(filters);
+
+    const totalRow = this.database
+      .prepare(
+        `
+          SELECT COUNT(*) AS count
+          FROM offers o
+          INNER JOIN cards c ON c.id = o.card_id
+          WHERE ${whereSql}
+        `
+      )
+      .get(...params) as { count: number };
+
+    const items = this.database
+      .prepare(
+        `
+          SELECT
+            o.*,
+            c.number AS card_number,
+            c.image_url AS card_image_url,
+            c.id AS origin_card_id
+          FROM offers o
+          INNER JOIN cards c ON c.id = o.card_id
+          WHERE ${whereSql}
+          ORDER BY o.first_seen_at DESC, o.price_cents ASC, o.id DESC
+          LIMIT ? OFFSET ?
+        `
+      )
+      .all(...params, limit, offset) as OfferListRecord[];
+
+    return {
+      items,
+      total: totalRow.count,
+      page,
+      limit
+    };
+  }
+
+  countActiveOffers(): number {
+    const row = this.database
+      .prepare("SELECT COUNT(*) AS count FROM offers WHERE is_active = 1")
+      .get() as { count: number };
+
+    return row.count;
+  }
+
+  countNewOffers(): number {
+    const row = this.database
+      .prepare("SELECT COUNT(*) AS count FROM offers WHERE is_new = 1")
+      .get() as { count: number };
+
+    return row.count;
+  }
+
+  getLowestActiveOffer(): OfferListRecord | undefined {
+    return this.database
+      .prepare(
+        `
+          SELECT
+            o.*,
+            c.number AS card_number,
+            c.image_url AS card_image_url,
+            c.id AS origin_card_id
+          FROM offers o
+          INNER JOIN cards c ON c.id = o.card_id
+          WHERE o.is_active = 1
+          ORDER BY o.price_cents ASC, o.id ASC
+          LIMIT 1
+        `
+      )
+      .get() as OfferListRecord | undefined;
+  }
+
+  listLatestNewOffers(limit = 10): OfferListRecord[] {
+    return this.database
+      .prepare(
+        `
+          SELECT
+            o.*,
+            c.number AS card_number,
+            c.image_url AS card_image_url,
+            c.id AS origin_card_id
+          FROM offers o
+          INNER JOIN cards c ON c.id = o.card_id
+          WHERE o.is_new = 1
+          ORDER BY o.first_seen_at DESC, o.id DESC
+          LIMIT ?
+        `
+      )
+      .all(limit) as OfferListRecord[];
+  }
+}

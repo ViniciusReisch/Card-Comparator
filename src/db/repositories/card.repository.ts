@@ -37,8 +37,64 @@ export type CardRecord = {
   raw_json: string;
 };
 
+export type CardListFilters = {
+  source?: string;
+  collection?: string;
+  year?: number;
+  query?: string;
+  page: number;
+  limit: number;
+};
+
+export type GroupedCardRecord = {
+  id: number;
+  name: string;
+  set_name: string | null;
+  set_code: string | null;
+  year: number | null;
+  number: string | null;
+  image_url: string | null;
+  sources: string;
+  active_offer_count: number;
+  min_price_cents: number | null;
+  currency: string | null;
+};
+
 export class CardRepository {
   private readonly database = getDatabase();
+
+  private buildWhereClause(filters: Omit<CardListFilters, "page" | "limit">): {
+    whereSql: string;
+    params: unknown[];
+  } {
+    const conditions = ["1 = 1"];
+    const params: unknown[] = [];
+
+    if (filters.source) {
+      conditions.push("c.source = ?");
+      params.push(filters.source);
+    }
+
+    if (filters.collection) {
+      conditions.push("LOWER(COALESCE(c.set_name, '')) LIKE ?");
+      params.push(`%${filters.collection.toLowerCase()}%`);
+    }
+
+    if (typeof filters.year === "number") {
+      conditions.push("c.year = ?");
+      params.push(filters.year);
+    }
+
+    if (filters.query) {
+      conditions.push("LOWER(c.name) LIKE ?");
+      params.push(`%${filters.query.toLowerCase()}%`);
+    }
+
+    return {
+      whereSql: conditions.join(" AND "),
+      params
+    };
+  }
 
   findById(id: number): CardRecord | undefined {
     return this.database
@@ -138,5 +194,134 @@ export class CardRepository {
 
     return this.findById(Number(result.lastInsertRowid))!;
   }
-}
 
+  listGrouped(filters: CardListFilters): {
+    items: GroupedCardRecord[];
+    total: number;
+    page: number;
+    limit: number;
+  } {
+    const page = Math.max(filters.page, 1);
+    const limit = Math.min(Math.max(filters.limit, 1), 100);
+    const offset = (page - 1) * limit;
+    const { whereSql, params } = this.buildWhereClause(filters);
+
+    const totalRow = this.database
+      .prepare(
+        `
+          SELECT COUNT(*) AS count
+          FROM (
+            SELECT 1
+            FROM cards c
+            WHERE ${whereSql}
+            GROUP BY
+              LOWER(c.name),
+              LOWER(COALESCE(c.set_name, '')),
+              COALESCE(c.year, -1),
+              LOWER(COALESCE(c.number, ''))
+          )
+        `
+      )
+      .get(...params) as { count: number };
+
+    const items = this.database
+      .prepare(
+        `
+          SELECT
+            MIN(c.id) AS id,
+            MIN(c.name) AS name,
+            MIN(c.set_name) AS set_name,
+            MIN(c.set_code) AS set_code,
+            MIN(c.year) AS year,
+            MIN(c.number) AS number,
+            MAX(c.image_url) AS image_url,
+            GROUP_CONCAT(DISTINCT c.source) AS sources,
+            COUNT(DISTINCT CASE WHEN o.is_active = 1 THEN o.id END) AS active_offer_count,
+            MIN(CASE WHEN o.is_active = 1 THEN o.price_cents END) AS min_price_cents,
+            MIN(CASE WHEN o.is_active = 1 THEN o.currency END) AS currency
+          FROM cards c
+          LEFT JOIN offers o ON o.card_id = c.id
+          WHERE ${whereSql}
+          GROUP BY
+            LOWER(c.name),
+            LOWER(COALESCE(c.set_name, '')),
+            COALESCE(c.year, -1),
+            LOWER(COALESCE(c.number, ''))
+          ORDER BY MAX(c.last_seen_at) DESC, MIN(c.name) ASC
+          LIMIT ? OFFSET ?
+        `
+      )
+      .all(...params, limit, offset) as GroupedCardRecord[];
+
+    return {
+      items,
+      total: totalRow.count,
+      page,
+      limit
+    };
+  }
+
+  countGroupedCards(): number {
+    const row = this.database
+      .prepare(
+        `
+          SELECT COUNT(*) AS count
+          FROM (
+            SELECT 1
+            FROM cards
+            GROUP BY
+              LOWER(name),
+              LOWER(COALESCE(set_name, '')),
+              COALESCE(year, -1),
+              LOWER(COALESCE(number, ''))
+          )
+        `
+      )
+      .get() as { count: number };
+
+    return row.count;
+  }
+
+  getGroupedCardById(id: number): GroupedCardRecord | undefined {
+    const baseCard = this.findById(id);
+
+    if (!baseCard) {
+      return undefined;
+    }
+
+    return this.database
+      .prepare(
+        `
+          SELECT
+            MIN(c.id) AS id,
+            MIN(c.name) AS name,
+            MIN(c.set_name) AS set_name,
+            MIN(c.set_code) AS set_code,
+            MIN(c.year) AS year,
+            MIN(c.number) AS number,
+            MAX(c.image_url) AS image_url,
+            GROUP_CONCAT(DISTINCT c.source) AS sources,
+            COUNT(DISTINCT CASE WHEN o.is_active = 1 THEN o.id END) AS active_offer_count,
+            MIN(CASE WHEN o.is_active = 1 THEN o.price_cents END) AS min_price_cents,
+            MIN(CASE WHEN o.is_active = 1 THEN o.currency END) AS currency
+          FROM cards c
+          LEFT JOIN offers o ON o.card_id = c.id
+          WHERE LOWER(c.name) = LOWER(?)
+            AND COALESCE(LOWER(c.set_name), '') = ?
+            AND COALESCE(c.year, -1) = ?
+            AND COALESCE(LOWER(c.number), '') = ?
+          GROUP BY
+            LOWER(c.name),
+            LOWER(COALESCE(c.set_name, '')),
+            COALESCE(c.year, -1),
+            LOWER(COALESCE(c.number, ''))
+        `
+      )
+      .get(
+        baseCard.name,
+        (baseCard.set_name ?? "").toLowerCase(),
+        baseCard.year ?? -1,
+        (baseCard.number ?? "").toLowerCase()
+      ) as GroupedCardRecord | undefined;
+  }
+}

@@ -52,16 +52,22 @@ export class MonitorService {
         const sourceStatus = persisted.status;
         const sourceErrorMessage = persisted.errors.length > 0 ? persisted.errors.join(" | ") : null;
 
+        this.runService.completeSource(sourceRun.id, {
+          status: sourceStatus,
+          cardsFound: persisted.cardsFound,
+          offersFound: persisted.offersFound,
+          newOffersFound: persisted.newOffersFound,
+          errorMessage: sourceErrorMessage
+        });
+
         completedSources.push({
           id: sourceRun.id,
           source: source.key,
-          ...this.runService.completeSource(sourceRun.id, {
-            status: sourceStatus,
-            cardsFound: persisted.cardsFound,
-            offersFound: persisted.offersFound,
-            newOffersFound: persisted.newOffersFound,
-            errorMessage: sourceErrorMessage
-          })
+          status: sourceStatus,
+          cardsFound: persisted.cardsFound,
+          offersFound: persisted.offersFound,
+          newOffersFound: persisted.newOffersFound,
+          errorMessage: sourceErrorMessage
         });
 
         totalCardsFound += persisted.cardsFound;
@@ -77,16 +83,23 @@ export class MonitorService {
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown monitor source error";
+
+        this.runService.completeSource(sourceRun.id, {
+          status: "error",
+          cardsFound: 0,
+          offersFound: 0,
+          newOffersFound: 0,
+          errorMessage: message
+        });
+
         completedSources.push({
           id: sourceRun.id,
           source: source.key,
-          ...this.runService.completeSource(sourceRun.id, {
-            status: "error",
-            cardsFound: 0,
-            offersFound: 0,
-            newOffersFound: 0,
-            errorMessage: message
-          })
+          status: "error",
+          cardsFound: 0,
+          offersFound: 0,
+          newOffersFound: 0,
+          errorMessage: message
         });
 
         finalStatus = "partial";
@@ -109,4 +122,3 @@ export class MonitorService {
 }
 
 export const monitorService = new MonitorService();
-
