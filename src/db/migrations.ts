@@ -75,6 +75,13 @@ export function runMigrations(): void {
   addColumnIfMissing(database, "offers", "price_brl_cents", "INTEGER");
   addColumnIfMissing(database, "offers", "exchange_rate_to_brl", "REAL");
   addColumnIfMissing(database, "offers", "exchange_rate_date", "TEXT");
+  addColumnIfMissing(database, "offers", "first_seen_run_id", "INTEGER");
+
+  addColumnIfMissing(database, "monitor_runs", "progress_snapshot_json", "TEXT");
+  addColumnIfMissing(database, "monitor_runs", "duration_ms", "INTEGER");
+  addColumnIfMissing(database, "monitor_runs", "estimated_total_cards", "INTEGER");
+  addColumnIfMissing(database, "monitor_runs", "processed_cards", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing(database, "monitor_runs", "total_sources_done", "INTEGER NOT NULL DEFAULT 0");
 
   // Add new columns to price_history
   addColumnIfMissing(database, "price_history", "price_brl_cents", "INTEGER");

@@ -3,6 +3,7 @@ import { env } from "../config/env";
 import { runMigrations } from "../db/migrations";
 import { createDashboardRouter } from "./routes/dashboard.routes";
 import { createCardsRouter } from "./routes/cards.routes";
+import { createMonitorRouter } from "./routes/monitor.routes";
 import { createOffersRouter } from "./routes/offers.routes";
 import { createRunsRouter } from "./routes/runs.routes";
 
@@ -29,6 +30,7 @@ app.get("/api/health", (_req, res) => {
 
 app.use("/api", createDashboardRouter());
 app.use("/api", createCardsRouter());
+app.use("/api", createMonitorRouter());
 app.use("/api", createOffersRouter());
 app.use("/api", createRunsRouter());
 

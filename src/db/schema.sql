@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS offers (
   quantity INTEGER,
   is_new INTEGER NOT NULL DEFAULT 0,
   is_active INTEGER NOT NULL DEFAULT 1,
+  first_seen_run_id INTEGER,
   first_seen_at TEXT NOT NULL,
   last_seen_at TEXT NOT NULL,
   last_price_cents INTEGER,
@@ -91,7 +92,12 @@ CREATE TABLE IF NOT EXISTS monitor_runs (
   total_cards_found INTEGER NOT NULL DEFAULT 0,
   total_offers_found INTEGER NOT NULL DEFAULT 0,
   new_offers_found INTEGER NOT NULL DEFAULT 0,
-  error_message TEXT
+  error_message TEXT,
+  progress_snapshot_json TEXT,
+  duration_ms INTEGER,
+  estimated_total_cards INTEGER,
+  processed_cards INTEGER NOT NULL DEFAULT 0,
+  total_sources_done INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_monitor_runs_started_at

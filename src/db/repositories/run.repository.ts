@@ -9,6 +9,11 @@ export type MonitorRunRecord = {
   total_offers_found: number;
   new_offers_found: number;
   error_message: string | null;
+  progress_snapshot_json: string | null;
+  duration_ms: number | null;
+  estimated_total_cards: number | null;
+  processed_cards: number;
+  total_sources_done: number;
 };
 
 export type MonitorRunSourceRecord = {
@@ -34,8 +39,10 @@ export class RunRepository {
             status,
             total_cards_found,
             total_offers_found,
-            new_offers_found
-          ) VALUES (?, 'running', 0, 0, 0)
+            new_offers_found,
+            processed_cards,
+            total_sources_done
+          ) VALUES (?, 'running', 0, 0, 0, 0, 0)
         `
       )
       .run(startedAt);
@@ -46,6 +53,7 @@ export class RunRepository {
   completeMonitorRun(input: {
     runId: number;
     status: string;
+    startedAt: string;
     finishedAt: string;
     totalCardsFound: number;
     totalOffersFound: number;
@@ -62,7 +70,33 @@ export class RunRepository {
             total_cards_found = @totalCardsFound,
             total_offers_found = @totalOffersFound,
             new_offers_found = @newOffersFound,
-            error_message = @errorMessage
+            error_message = @errorMessage,
+            duration_ms = @durationMs
+          WHERE id = @runId
+        `
+      )
+      .run({
+        ...input,
+        durationMs: Math.max(0, new Date(input.finishedAt).getTime() - new Date(input.startedAt).getTime())
+      });
+  }
+
+  updateMonitorRunProgress(input: {
+    runId: number;
+    progressSnapshotJson: string;
+    estimatedTotalCards: number | null;
+    processedCards: number;
+    totalSourcesDone: number;
+  }): void {
+    this.database
+      .prepare(
+        `
+          UPDATE monitor_runs
+          SET
+            progress_snapshot_json = @progressSnapshotJson,
+            estimated_total_cards = @estimatedTotalCards,
+            processed_cards = @processedCards,
+            total_sources_done = @totalSourcesDone
           WHERE id = @runId
         `
       )
@@ -115,6 +149,12 @@ export class RunRepository {
   getLatestRun(): MonitorRunRecord | undefined {
     return this.database
       .prepare("SELECT * FROM monitor_runs ORDER BY started_at DESC LIMIT 1")
+      .get() as MonitorRunRecord | undefined;
+  }
+
+  getLatestCompletedRun(): MonitorRunRecord | undefined {
+    return this.database
+      .prepare("SELECT * FROM monitor_runs WHERE status != 'running' ORDER BY started_at DESC LIMIT 1")
       .get() as MonitorRunRecord | undefined;
   }
 

@@ -1,4 +1,5 @@
 import { RunRepository } from "../db/repositories/run.repository";
+import type { MonitorStatusSnapshot } from "../domain/monitor.types";
 import type { SourceKey, MonitorStatus, SourceScrapeStatus } from "../domain/source.types";
 
 export type SourceRunSummary = {
@@ -81,6 +82,7 @@ export class RunService {
     this.repository.completeMonitorRun({
       runId: input.id,
       status: input.status,
+      startedAt: input.startedAt,
       finishedAt: input.finishedAt ?? new Date().toISOString(),
       totalCardsFound: input.totalCardsFound,
       totalOffersFound: input.totalOffersFound,
@@ -89,5 +91,23 @@ export class RunService {
     });
 
     return input;
+  }
+
+  updateProgress(runId: number, snapshot: MonitorStatusSnapshot): void {
+    this.repository.updateMonitorRunProgress({
+      runId,
+      progressSnapshotJson: JSON.stringify(snapshot),
+      estimatedTotalCards: snapshot.totalCardsEstimated,
+      processedCards: snapshot.processedCards,
+      totalSourcesDone: snapshot.totalSourcesDone
+    });
+  }
+
+  getLatestCompletedRun() {
+    return this.repository.getLatestCompletedRun();
+  }
+
+  listSourceRuns(runId: number) {
+    return this.repository.listSourceRuns(runId);
   }
 }
