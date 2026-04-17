@@ -26,6 +26,7 @@ export type OfferRecordInput = {
   sellerCountry: string | null;
   storeName: string | null;
   quantity: number | null;
+  firstSeenRunId: number | null;
   firstSeenAt: string;
   lastSeenAt: string;
   rawHash: string;
@@ -61,6 +62,7 @@ export type OfferRecord = {
   quantity: number | null;
   is_new: number;
   is_active: number;
+  first_seen_run_id: number | null;
   first_seen_at: string;
   last_seen_at: string;
   last_price_cents: number | null;
@@ -94,6 +96,7 @@ export type OfferListFilters = {
     year: number | null;
     number: string | null;
   };
+  sort?: "latest" | "oldest" | "priceAsc" | "priceDesc";
   page: number;
   limit: number;
 };
@@ -247,7 +250,7 @@ export class OfferRepository {
               price_cents, currency,
               original_price_cents, original_currency, price_brl_cents, exchange_rate_to_brl, exchange_rate_date,
               image_url, offer_url, seller_name, seller_country, store_name, quantity,
-              is_new, is_active, first_seen_at, last_seen_at, last_price_cents, missing_count,
+              is_new, is_active, first_seen_run_id, first_seen_at, last_seen_at, last_price_cents, missing_count,
               raw_hash, raw_json
             ) VALUES (
               @cardId, @source, @sourceOfferId, @canonicalOfferKey,
@@ -256,7 +259,7 @@ export class OfferRepository {
               @priceCents, @currency,
               @originalPriceCents, @originalCurrency, @priceBrlCents, @exchangeRateToBrl, @exchangeRateDate,
               @imageUrl, @offerUrl, @sellerName, @sellerCountry, @storeName, @quantity,
-              1, 1, @firstSeenAt, @lastSeenAt, @priceCents, 0,
+              1, 1, @firstSeenRunId, @firstSeenAt, @lastSeenAt, @priceCents, 0,
               @rawHash, @rawJson
             )`
         )
@@ -284,6 +287,7 @@ export class OfferRepository {
             image_url = @imageUrl, offer_url = @offerUrl, seller_name = @sellerName,
             seller_country = @sellerCountry, store_name = @storeName, quantity = @quantity,
             is_new = 0, is_active = 1, last_seen_at = @lastSeenAt,
+            first_seen_run_id = COALESCE(first_seen_run_id, @firstSeenRunId),
             last_price_cents = @lastPriceCents, missing_count = 0,
             raw_hash = @rawHash, raw_json = @rawJson
           WHERE id = @id`
@@ -339,6 +343,19 @@ export class OfferRepository {
     const limit = Math.min(Math.max(filters.limit, 1), 200);
     const offset = (page - 1) * limit;
     const { whereSql, params } = this.buildWhereClause(filters);
+    const orderBySql = (() => {
+      switch (filters.sort) {
+        case "oldest":
+          return "o.first_seen_at ASC, COALESCE(o.price_brl_cents, o.price_cents) ASC, o.id ASC";
+        case "priceAsc":
+          return "COALESCE(o.price_brl_cents, o.price_cents) ASC, o.first_seen_at DESC, o.id DESC";
+        case "priceDesc":
+          return "COALESCE(o.price_brl_cents, o.price_cents) DESC, o.first_seen_at DESC, o.id DESC";
+        case "latest":
+        default:
+          return "o.first_seen_at DESC, COALESCE(o.price_brl_cents, o.price_cents) ASC, o.id DESC";
+      }
+    })();
 
     const totalRow = this.database
       .prepare(
@@ -359,7 +376,7 @@ export class OfferRepository {
           FROM offers o
           INNER JOIN cards c ON c.id = o.card_id
           WHERE ${whereSql}
-          ORDER BY o.first_seen_at DESC, COALESCE(o.price_brl_cents, o.price_cents) ASC, o.id DESC
+          ORDER BY ${orderBySql}
           LIMIT ? OFFSET ?`
       )
       .all(...params, limit, offset) as OfferListRecord[];

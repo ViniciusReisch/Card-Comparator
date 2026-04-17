@@ -1,10 +1,21 @@
 import { createHash } from "node:crypto";
 import { CardRepository } from "../db/repositories/card.repository";
 import { OfferRepository } from "../db/repositories/offer.repository";
-import type { SourceScrapeResult } from "../domain/card.types";
+import type { ScrapedCardResult } from "../domain/card.types";
+import type { RecentNewOfferSummary } from "../domain/monitor.types";
 import type { SourceKey, SourceScrapeStatus } from "../domain/source.types";
 import { buildCanonicalCardKey, buildCanonicalOfferKey } from "../normalizers/offer-key";
 import { currencyConverter } from "./currency-converter";
+
+export type PersistedCardSummary = {
+  source: SourceKey;
+  cardId: number;
+  cardWasInserted: boolean;
+  offersFound: number;
+  newOffersFound: number;
+  seenOfferIds: number[];
+  newOffers: RecentNewOfferSummary[];
+};
 
 export type PersistedSourceSummary = {
   source: SourceKey;
@@ -27,102 +38,123 @@ export class DiffService {
     this.offerRepository.resetNewFlags();
   }
 
-  persistSourceResult(result: SourceScrapeResult): PersistedSourceSummary {
-    const seenOfferIds = new Set<number>();
+  persistScrapedCard(card: ScrapedCardResult, runId: number): PersistedCardSummary {
+    const now = new Date().toISOString();
+    const canonicalCardKey = buildCanonicalCardKey(card);
+    const cardUpserted = this.cardRepository.upsert({
+      source: card.source,
+      sourceCardId: card.sourceCardId ?? canonicalCardKey,
+      canonicalCardKey,
+      name: card.name,
+      setName: card.setName,
+      setCode: card.setCode,
+      year: card.year,
+      number: card.number,
+      rarity: card.rarity,
+      imageUrl: card.imageUrl,
+      detailUrl: card.detailUrl,
+      firstSeenAt: now,
+      lastSeenAt: now,
+      rawHash: hashPayload(card.raw),
+      rawJson: JSON.stringify(card.raw)
+    });
+
+    const seenOfferIds: number[] = [];
+    const newOffers: RecentNewOfferSummary[] = [];
     let offersFound = 0;
     let newOffersFound = 0;
-    const langCounts: Record<string, number> = {};
 
-    for (const card of result.cards) {
-      const canonicalCardKey = buildCanonicalCardKey(card);
-      const cardRecord = this.cardRepository.upsert({
-        source: card.source,
-        sourceCardId: card.sourceCardId ?? canonicalCardKey,
-        canonicalCardKey,
-        name: card.name,
-        setName: card.setName,
-        setCode: card.setCode,
-        year: card.year,
-        number: card.number,
-        rarity: card.rarity,
-        imageUrl: card.imageUrl,
-        detailUrl: card.detailUrl,
-        firstSeenAt: new Date().toISOString(),
-        lastSeenAt: new Date().toISOString(),
-        rawHash: hashPayload(card.raw),
-        rawJson: JSON.stringify(card.raw)
+    for (const offer of card.offers) {
+      const canonicalOfferKey = buildCanonicalOfferKey(offer);
+      const { priceBrlCents, exchangeRate, exchangeRateDate } = currencyConverter.convertToBrl(
+        offer.priceCents,
+        offer.currency
+      );
+
+      const upserted = this.offerRepository.upsert({
+        cardId: cardUpserted.card.id,
+        source: offer.source,
+        sourceOfferId: offer.sourceOfferId ?? canonicalOfferKey,
+        canonicalOfferKey,
+        cardName: offer.cardName,
+        setName: offer.setName,
+        setCode: offer.setCode,
+        year: offer.year,
+        languageRaw: offer.languageRaw,
+        languageNormalized: offer.languageNormalized,
+        conditionRaw: offer.conditionRaw,
+        conditionNormalized: offer.conditionNormalized,
+        priceCents: offer.priceCents,
+        currency: offer.currency,
+        originalPriceCents: offer.priceCents,
+        originalCurrency: offer.currency,
+        priceBrlCents,
+        exchangeRateToBrl: exchangeRate,
+        exchangeRateDate,
+        imageUrl: offer.imageUrl,
+        offerUrl: offer.offerUrl,
+        sellerName: offer.sellerName,
+        sellerCountry: offer.sellerCountry,
+        storeName: offer.storeName,
+        quantity: offer.quantity,
+        firstSeenRunId: runId,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        rawHash: hashPayload(offer.raw),
+        rawJson: JSON.stringify(offer.raw)
       });
 
-      for (const offer of card.offers) {
-        const canonicalOfferKey = buildCanonicalOfferKey(offer);
-        const { priceBrlCents, exchangeRate, exchangeRateDate } = currencyConverter.convertToBrl(
-          offer.priceCents,
-          offer.currency
-        );
+      offersFound += 1;
+      seenOfferIds.push(upserted.offer.id);
 
-        const lang = offer.languageNormalized ?? "UNKNOWN";
-        langCounts[lang] = (langCounts[lang] ?? 0) + 1;
-
-        const upserted = this.offerRepository.upsert({
-          cardId: cardRecord.id,
-          source: offer.source,
-          sourceOfferId: offer.sourceOfferId ?? canonicalOfferKey,
-          canonicalOfferKey,
-          cardName: offer.cardName,
-          setName: offer.setName,
-          setCode: offer.setCode,
-          year: offer.year,
-          languageRaw: offer.languageRaw,
-          languageNormalized: offer.languageNormalized,
-          conditionRaw: offer.conditionRaw,
-          conditionNormalized: offer.conditionNormalized,
-          priceCents: offer.priceCents,
-          currency: offer.currency,
-          originalPriceCents: offer.priceCents,
-          originalCurrency: offer.currency,
-          priceBrlCents,
-          exchangeRateToBrl: exchangeRate,
-          exchangeRateDate,
-          imageUrl: offer.imageUrl,
-          offerUrl: offer.offerUrl,
-          sellerName: offer.sellerName,
-          sellerCountry: offer.sellerCountry,
-          storeName: offer.storeName,
-          quantity: offer.quantity,
-          firstSeenAt: new Date().toISOString(),
-          lastSeenAt: new Date().toISOString(),
-          rawHash: hashPayload(offer.raw),
-          rawJson: JSON.stringify(offer.raw)
+      if (upserted.wasInserted) {
+        newOffersFound += 1;
+        newOffers.push({
+          id: upserted.offer.id,
+          cardId: cardUpserted.card.id,
+          source: upserted.offer.source as SourceKey,
+          cardName: upserted.offer.card_name,
+          setName: upserted.offer.set_name,
+          setCode: upserted.offer.set_code,
+          year: upserted.offer.year,
+          number: card.number,
+          languageRaw: upserted.offer.language_raw,
+          languageNormalized: upserted.offer.language_normalized,
+          conditionRaw: upserted.offer.condition_raw,
+          conditionNormalized: upserted.offer.condition_normalized,
+          priceCents: upserted.offer.price_cents,
+          currency: upserted.offer.currency,
+          priceBrlCents: upserted.offer.price_brl_cents,
+          exchangeRateToBrl: upserted.offer.exchange_rate_to_brl,
+          exchangeRateDate: upserted.offer.exchange_rate_date,
+          imageUrl: upserted.offer.image_url ?? card.imageUrl,
+          offerUrl: upserted.offer.offer_url,
+          sellerName: upserted.offer.seller_name,
+          sellerCountry: upserted.offer.seller_country,
+          storeName: upserted.offer.store_name,
+          quantity: upserted.offer.quantity,
+          isNew: Boolean(upserted.offer.is_new),
+          isActive: Boolean(upserted.offer.is_active),
+          firstSeenAt: upserted.offer.first_seen_at,
+          lastSeenAt: upserted.offer.last_seen_at,
+          lastPriceCents: upserted.offer.last_price_cents,
+          firstSeenRunId: upserted.offer.first_seen_run_id
         });
-
-        offersFound += 1;
-        if (upserted.wasInserted) {
-          newOffersFound += 1;
-        }
-
-        seenOfferIds.add(upserted.offer.id);
       }
     }
 
-    if (result.status === "success") {
-      this.offerRepository.reconcileMissingOffers(result.source, Array.from(seenOfferIds));
-    }
-
-    const langLog = Object.entries(langCounts)
-      .sort(([, a], [, b]) => b - a)
-      .map(([l, c]) => `${l}:${c}`)
-      .join(" | ");
-    if (langLog) {
-      console.log(`[${result.source.toLowerCase()}] idiomas coletados: ${langLog}`);
-    }
-
     return {
-      source: result.source,
-      status: result.status,
-      cardsFound: result.cards.length,
+      source: card.source,
+      cardId: cardUpserted.card.id,
+      cardWasInserted: cardUpserted.wasInserted,
       offersFound,
       newOffersFound,
-      errors: result.errors
+      seenOfferIds,
+      newOffers
     };
+  }
+
+  reconcileSourceSeenOffers(source: SourceKey, seenOfferIds: number[]): void {
+    this.offerRepository.reconcileMissingOffers(source, seenOfferIds);
   }
 }

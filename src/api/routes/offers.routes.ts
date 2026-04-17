@@ -8,7 +8,7 @@ export function createOffersRouter(): Router {
 
   router.get("/offers/new", (req, res) => {
     const query = req.query as Record<string, unknown>;
-    const result = offerRepository.listOffers(buildOfferFilters(query, { onlyNew: true, onlyActive: false }));
+    const result = offerRepository.listOffers(buildOfferFilters(query, { onlyNew: true, onlyActive: true }));
 
     res.json({
       items: result.items.map(mapOffer),
@@ -34,6 +34,15 @@ export function createOffersRouter(): Router {
     });
   });
 
+  router.get("/offers/recent-new", (req, res) => {
+    const query = req.query as Record<string, unknown>;
+    const limit = Math.min(Math.max(Number(query.limit ?? 12), 1), 50);
+    const items = offerRepository.listLatestNewOffers(limit);
+
+    res.json({
+      items: items.map(mapOffer)
+    });
+  });
+
   return router;
 }
-

@@ -8,6 +8,15 @@ function readQueryValue(query: Record<string, unknown>, key: string): string | u
   return typeof value === "string" ? value : undefined;
 }
 
+export function readBooleanQuery(query: Record<string, unknown>, key: string): boolean | undefined {
+  const value = readQueryValue(query, key);
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+  return undefined;
+}
+
 export function readStringQuery(query: Record<string, unknown>, key: string): string | undefined {
   const value = readQueryValue(query, key);
   return value && value.trim().length > 0 ? value.trim() : undefined;
@@ -33,8 +42,9 @@ export function buildOfferFilters(
   query: Record<string, unknown>,
   overrides: Partial<OfferListFilters> = {}
 ): OfferListFilters {
-  const minPrice = readNumberQuery(query, "minPrice");
-  const maxPrice = readNumberQuery(query, "maxPrice");
+  const minPrice = readNumberQuery(query, "minPriceBrl") ?? readNumberQuery(query, "minPrice");
+  const maxPrice = readNumberQuery(query, "maxPriceBrl") ?? readNumberQuery(query, "maxPrice");
+  const sort = readStringQuery(query, "sort");
 
   return {
     source: readStringQuery(query, "source"),
@@ -42,15 +52,19 @@ export function buildOfferFilters(
     condition: readStringQuery(query, "condition"),
     minPriceCents: typeof minPrice === "number" ? Math.round(minPrice * 100) : undefined,
     maxPriceCents: typeof maxPrice === "number" ? Math.round(maxPrice * 100) : undefined,
-    collection: readStringQuery(query, "collection"),
+    collection: readStringQuery(query, "setName") ?? readStringQuery(query, "collection"),
     year: readNumberQuery(query, "year"),
     dateFrom: readStringQuery(query, "dateFrom"),
     dateTo: readStringQuery(query, "dateTo"),
     search: readStringQuery(query, "search"),
-    onlyNew: overrides.onlyNew ?? false,
-    onlyActive: overrides.onlyActive ?? true,
+    onlyNew: overrides.onlyNew ?? readBooleanQuery(query, "newOnly") ?? false,
+    onlyActive: overrides.onlyActive ?? readBooleanQuery(query, "activeOnly") ?? true,
+    sort:
+      sort === "oldest" || sort === "priceAsc" || sort === "priceDesc" || sort === "latest"
+        ? sort
+        : "latest",
     page: overrides.page ?? readPage(query),
-    limit: overrides.limit ?? readLimit(query, 25, 250),
+    limit: overrides.limit ?? readLimit(query, readNumberQuery(query, "pageSize") ?? 25, 250),
     cardGroup: overrides.cardGroup
   };
 }
@@ -93,10 +107,12 @@ export function mapOffer(record: OfferListRecord) {
     imageUrl: record.image_url ?? record.card_image_url,
     offerUrl: record.offer_url,
     sellerName: record.seller_name,
+    sellerCountry: record.seller_country,
     storeName: record.store_name,
     quantity: record.quantity,
     isNew: Boolean(record.is_new),
     isActive: Boolean(record.is_active),
+    firstSeenRunId: record.first_seen_run_id,
     firstSeenAt: record.first_seen_at,
     lastSeenAt: record.last_seen_at,
     lastPriceCents: record.last_price_cents

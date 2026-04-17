@@ -37,6 +37,11 @@ export type CardRecord = {
   raw_json: string;
 };
 
+export type CardUpsertResult = {
+  card: CardRecord;
+  wasInserted: boolean;
+};
+
 export type CardListFilters = {
   source?: string;
   collection?: string;
@@ -118,7 +123,7 @@ export class CardRepository {
       .get(input.canonicalCardKey) as CardRecord | undefined;
   }
 
-  upsert(input: CardRecordInput): CardRecord {
+  upsert(input: CardRecordInput): CardUpsertResult {
     const existing = this.findByIdentity(input);
 
     if (existing) {
@@ -149,7 +154,10 @@ export class CardRepository {
           id: existing.id
         });
 
-      return this.findById(existing.id)!;
+      return {
+        card: this.findById(existing.id)!,
+        wasInserted: false
+      };
     }
 
     const result = this.database
@@ -192,7 +200,10 @@ export class CardRepository {
       )
       .run(input);
 
-    return this.findById(Number(result.lastInsertRowid))!;
+    return {
+      card: this.findById(Number(result.lastInsertRowid))!,
+      wasInserted: true
+    };
   }
 
   listGrouped(filters: CardListFilters): {
