@@ -1,19 +1,19 @@
-const languageConfig: Record<string, { code: string; label: string }> = {
-  PORTUGUESE: { code: "PT", label: "Portugues" },
-  ENGLISH: { code: "EN", label: "English" },
-  JAPANESE: { code: "JP", label: "Japanese" },
-  SPANISH: { code: "ES", label: "Spanish" },
-  FRENCH: { code: "FR", label: "French" },
-  GERMAN: { code: "DE", label: "German" },
-  ITALIAN: { code: "IT", label: "Italian" },
-  KOREAN: { code: "KO", label: "Korean" },
-  CHINESE_SIMPLIFIED: { code: "ZH", label: "Chinese Simplified" },
-  CHINESE_TRADITIONAL: { code: "ZH-TW", label: "Chinese Traditional" },
-  THAI: { code: "TH", label: "Thai" },
-  INDONESIAN: { code: "ID", label: "Indonesian" },
-  RUSSIAN: { code: "RU", label: "Russian" },
-  DUTCH: { code: "NL", label: "Dutch" },
-  UNKNOWN: { code: "?", label: "Desconhecido" }
+const languageConfig: Record<string, { flag: string; code: string; label: string }> = {
+  PORTUGUESE:          { flag: "🇧🇷", code: "PT", label: "Português" },
+  ENGLISH:             { flag: "🇺🇸", code: "EN", label: "English" },
+  JAPANESE:            { flag: "🇯🇵", code: "JP", label: "日本語" },
+  SPANISH:             { flag: "🇪🇸", code: "ES", label: "Español" },
+  FRENCH:              { flag: "🇫🇷", code: "FR", label: "Français" },
+  GERMAN:              { flag: "🇩🇪", code: "DE", label: "Deutsch" },
+  ITALIAN:             { flag: "🇮🇹", code: "IT", label: "Italiano" },
+  KOREAN:              { flag: "🇰🇷", code: "KO", label: "한국어" },
+  CHINESE_SIMPLIFIED:  { flag: "🇨🇳", code: "ZH", label: "简体中文" },
+  CHINESE_TRADITIONAL: { flag: "🇹🇼", code: "ZH-TW", label: "繁體中文" },
+  THAI:                { flag: "🇹🇭", code: "TH", label: "ภาษาไทย" },
+  INDONESIAN:          { flag: "🇮🇩", code: "ID", label: "Bahasa Indonesia" },
+  RUSSIAN:             { flag: "🇷🇺", code: "RU", label: "Русский" },
+  DUTCH:               { flag: "🇳🇱", code: "NL", label: "Nederlands" },
+  UNKNOWN:             { flag: "🌐", code: "?", label: "Desconhecido" }
 };
 
 type LanguageBadgeProps = {
@@ -27,6 +27,7 @@ export function LanguageBadge({ value, showLabel = false }: LanguageBadgeProps) 
 
   return (
     <span className="lang-badge" title={config.label}>
+      <span style={{ marginRight: "0.25em" }}>{config.flag}</span>
       {showLabel ? config.label : config.code}
     </span>
   );

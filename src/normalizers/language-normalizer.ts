@@ -36,7 +36,10 @@ export function normalizeLanguage(value: string | null | undefined): {
   const normalizedText = normalizeText(value);
 
   const match = languageMap.find((item) =>
-    item.patterns.some((pattern) => normalizedText === pattern || normalizedText.includes(pattern))
+    item.patterns.some((pattern) => {
+      if (pattern.length <= 3) return normalizedText === pattern;
+      return normalizedText === pattern || normalizedText.includes(pattern);
+    })
   );
 
   return {

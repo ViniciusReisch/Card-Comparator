@@ -927,13 +927,13 @@ button { cursor: pointer; }
 
 /* Ads table */
 .ads-table .img-cell {
-  width: 104px;
-  padding: 0.5rem 0.65rem;
+  width: 130px;
+  padding: 0.5rem 0.75rem;
 }
 
 .offer-thumb-shell {
-  width: 72px;
-  height: 96px;
+  width: 96px;
+  height: 130px;
   border-radius: 12px;
   background: linear-gradient(180deg, #fafaf7 0%, #eef0ea 100%);
   border: 1px solid var(--border);
@@ -1014,12 +1014,12 @@ button { cursor: pointer; }
   }
 
   .offer-thumb-shell {
-    width: 60px;
-    height: 82px;
+    width: 80px;
+    height: 108px;
   }
 
   .ads-table .img-cell {
-    width: 84px;
+    width: 106px;
   }
 
   .offer-thumb-preview {

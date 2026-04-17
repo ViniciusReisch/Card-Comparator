@@ -10,7 +10,7 @@ const envSchema = z.object({
     .default("true")
     .transform((value) => value.toLowerCase() === "true"),
   SLOW_MO: z.coerce.number().int().min(0).default(0),
-  REQUEST_DELAY_MS: z.coerce.number().int().min(0).default(1500),
+  REQUEST_DELAY_MS: z.coerce.number().int().min(0).default(800),
   LIGA_MAX_VER_MAIS_CLICKS: z.coerce.number().int().min(1).default(100),
   CARDTRADER_MAX_PAGES: z.coerce.number().int().min(1).default(200),
   MONITOR_STATUS_POLL_INTERVAL_MS: z.coerce.number().int().min(250).default(1500),

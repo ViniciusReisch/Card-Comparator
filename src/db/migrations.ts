@@ -44,7 +44,6 @@ function backfillBrlPrices(db: Database): void {
 }
 
 function applyDataMigrations(db: Database): void {
-  // Normalize old long-form condition codes to short codes
   const conditionMap: Record<string, string> = {
     NEAR_MINT: "NM",
     SLIGHTLY_PLAYED: "SP",
@@ -59,6 +58,22 @@ function applyDataMigrations(db: Database): void {
 
   for (const [oldCode, newCode] of Object.entries(conditionMap)) {
     db.prepare("UPDATE offers SET condition_normalized = ? WHERE condition_normalized = ?").run(newCode, oldCode);
+  }
+
+  // Fix language normalization bug: short pattern "en" matched "french" → ENGLISH
+  // Re-normalize based on raw text for affected languages
+  const languageRawFixes: Array<{ rawPattern: string; correctNormalized: string; wrongNormalized: string }> = [
+    { rawPattern: "%french%",     correctNormalized: "FRENCH",   wrongNormalized: "ENGLISH" },
+    { rawPattern: "%français%",   correctNormalized: "FRENCH",   wrongNormalized: "ENGLISH" },
+    { rawPattern: "%francais%",   correctNormalized: "FRENCH",   wrongNormalized: "ENGLISH" },
+    { rawPattern: "%frances%",    correctNormalized: "FRENCH",   wrongNormalized: "ENGLISH" },
+    { rawPattern: "%francês%",    correctNormalized: "FRENCH",   wrongNormalized: "ENGLISH" },
+  ];
+
+  for (const { rawPattern, correctNormalized, wrongNormalized } of languageRawFixes) {
+    db.prepare(
+      "UPDATE offers SET language_normalized = ? WHERE language_normalized = ? AND LOWER(language_raw) LIKE ?"
+    ).run(correctNormalized, wrongNormalized, rawPattern);
   }
 }
 

@@ -177,9 +177,14 @@ async function extractListingCards(page: Page): Promise<LigaPokemonListingRaw[]>
   }, { linkSelectors: ligaPokemonSelectors.listingCardLinks });
 }
 
+async function scrollToBottom(page: Page): Promise<void> {
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(400);
+}
+
 async function expandAllResults(page: Page, hooks?: SourceScraperHooks): Promise<void> {
   const maxClicks = monitorConfig.sources.ligapokemon.maxVerMaisClicks;
-  const requestDelayMs = getRequestDelayMs();
+  const loadWaitMs = 6_000;
   let stuckCount = 0;
 
   for (let clickIndex = 0; clickIndex < maxClicks; clickIndex += 1) {
@@ -191,27 +196,39 @@ async function expandAllResults(page: Page, hooks?: SourceScraperHooks): Promise
       totalCardsDiscovered: countBefore
     });
 
+    // scroll to bottom so the button becomes visible/lazy-rendered
+    await scrollToBottom(page);
+
     const button = await findVisibleLoadMore(page);
     if (!button) {
-      console.log(`[ligapokemon] botao 'Ver Mais' nao encontrado apos ${clickIndex} cliques. Total: ${countBefore} cards.`);
-      break;
+      // one more try after extra wait — sometimes button renders lazily
+      await page.waitForTimeout(800);
+      await scrollToBottom(page);
+      const buttonRetry = await findVisibleLoadMore(page);
+      if (!buttonRetry) {
+        console.log(`[ligapokemon] botao 'Ver Mais' nao encontrado apos ${clickIndex} cliques. Total: ${countBefore} cards.`);
+        break;
+      }
     }
 
-    const isDisabled = await button.isDisabled().catch(() => false);
+    const btn = (await findVisibleLoadMore(page))!;
+
+    const isDisabled = await btn.isDisabled().catch(() => false);
     if (isDisabled) {
       console.log(`[ligapokemon] botao 'Ver Mais' desabilitado. Total: ${countBefore} cards.`);
       break;
     }
 
-    await button.scrollIntoViewIfNeeded().catch(() => undefined);
+    await btn.scrollIntoViewIfNeeded().catch(() => undefined);
+    await page.waitForTimeout(200);
 
     let clicked = false;
     try {
-      await button.click({ timeout: 5_000 });
+      await btn.click({ timeout: 5_000, force: true });
       clicked = true;
     } catch {
       try {
-        await button.evaluate((element) => { (element as HTMLElement).click(); });
+        await btn.evaluate((element) => { (element as HTMLElement).click(); });
         clicked = true;
       } catch {
         clicked = false;
@@ -220,16 +237,15 @@ async function expandAllResults(page: Page, hooks?: SourceScraperHooks): Promise
 
     if (!clicked) {
       stuckCount += 1;
-      if (stuckCount >= 3) {
+      if (stuckCount >= 5) {
         console.log(`[ligapokemon] nao foi possivel clicar em 'Ver Mais'. Total: ${countBefore} cards.`);
         break;
       }
-      await page.waitForTimeout(requestDelayMs);
+      await page.waitForTimeout(1_000);
       continue;
     }
 
     await Promise.race([
-      page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => undefined),
       page.waitForFunction(
         ({ before, selectors }: { before: number; selectors: readonly string[] }) => {
           const seen = new Set<string>();
@@ -241,18 +257,21 @@ async function expandAllResults(page: Page, hooks?: SourceScraperHooks): Promise
           return seen.size > before;
         },
         { before: countBefore, selectors: ligaPokemonSelectors.listingCardLinks },
-        { timeout: Math.max(5_000, requestDelayMs) }
+        { timeout: loadWaitMs }
       ).catch(() => undefined),
-      page.waitForTimeout(requestDelayMs)
+      page.waitForLoadState("networkidle", { timeout: loadWaitMs }).catch(() => undefined),
+      page.waitForTimeout(loadWaitMs)
     ]);
 
     const countAfter = await countCards(page);
     if (countAfter <= countBefore) {
       stuckCount += 1;
-      if (stuckCount >= 3) {
+      if (stuckCount >= 5) {
         console.log(`[ligapokemon] sem aumento de cards apos ${stuckCount} tentativas. Total: ${countBefore} cards.`);
         break;
       }
+      console.log(`[ligapokemon] sem aumento (stuckCount=${stuckCount}), aguardando...`);
+      await page.waitForTimeout(1_500);
     } else {
       stuckCount = 0;
       console.log(`[ligapokemon] clique ${clickIndex + 1}: ${countBefore} -> ${countAfter} cards`);
@@ -437,7 +456,7 @@ async function scrapeDetailCard(
     }).catch(() => undefined);
   }
 
-  await detailPage.waitForTimeout(requestDelayMs);
+  await detailPage.waitForTimeout(Math.min(300, requestDelayMs));
   const detail = await extractDetail(detailPage);
   return mapLigaPokemonCard(queuedCard.listing, detail);
 }

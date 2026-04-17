@@ -336,7 +336,7 @@ async function scrapeDetailCard(page: Page, queuedCard: QueuedCardTraderCard): P
   await page.waitForLoadState("networkidle", {
     timeout: Math.min(5_000, monitorConfig.monitor.cardDetailTimeoutMs)
   }).catch(() => undefined);
-  await page.waitForTimeout(getRequestDelayMs());
+  await page.waitForTimeout(Math.min(250, getRequestDelayMs()));
   const detail = await extractDetail(page);
   return mapCardTraderCard(queuedCard.listing, detail);
 }
