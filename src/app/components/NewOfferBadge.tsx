@@ -1,4 +1,4 @@
 export function NewOfferBadge() {
-  return <span className="pill pill-new">Novo</span>;
+  return <span className="badge badge-new">✦ Novo</span>;
 }
 

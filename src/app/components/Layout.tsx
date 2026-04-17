@@ -1,10 +1,10 @@
 import { NavLink, Outlet } from "react-router-dom";
 
 const navItems = [
-  { to: "/dashboard", label: "Dashboard" },
-  { to: "/new-offers", label: "Novos anuncios" },
-  { to: "/cards", label: "Cards" },
-  { to: "/runs", label: "Execucoes" }
+  { to: "/dashboard", label: "Dashboard", icon: "◈" },
+  { to: "/new-offers", label: "Novos Anúncios", icon: "✦" },
+  { to: "/cards", label: "Cards", icon: "🃏" },
+  { to: "/runs", label: "Execuções", icon: "⚙" }
 ];
 
 export function Layout() {
@@ -12,10 +12,10 @@ export function Layout() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">RC</span>
+          <span className="brand-mark">R</span>
           <div>
-            <p className="eyebrow">Rayquaza Monitor</p>
-            <h1>card-comparator</h1>
+            <h1 style={{ fontFamily: "inherit" }}>Rayquaza Monitor</h1>
+            <p style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "0.1rem" }}>card-comparator</p>
           </div>
         </div>
 
@@ -26,30 +26,23 @@ export function Layout() {
               to={item.to}
               className={({ isActive }) => `nav-link${isActive ? " is-active" : ""}`}
             >
+              <span style={{ fontSize: "0.9rem" }}>{item.icon}</span>
               {item.label}
             </NavLink>
           ))}
         </nav>
 
-        <div className="sidebar-card">
-          <p className="eyebrow">Uso responsavel</p>
-          <p className="muted">
-            Coleta apenas dados publicos, com delays e sem burlar login, captcha ou protecoes.
-          </p>
+        <div className="sidebar-section">
+          <p className="sidebar-label">Fontes monitoradas</p>
+          <div style={{ padding: "0.5rem 0.75rem", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+            <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)" }}>🇧🇷 Liga Pokémon</span>
+            <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)" }}>🌐 CardTrader</span>
+          </div>
         </div>
       </aside>
 
       <div className="content-shell">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Monitor local</p>
-            <h2>Painel de ofertas Rayquaza</h2>
-          </div>
-        </header>
-
-        <main className="page-content">
-          <Outlet />
-        </main>
+        <Outlet />
       </div>
     </div>
   );

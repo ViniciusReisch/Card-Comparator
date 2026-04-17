@@ -7,9 +7,9 @@ type StatCardProps = {
 export function StatCard({ label, value, hint }: StatCardProps) {
   return (
     <article className="stat-card">
-      <p className="eyebrow">{label}</p>
-      <strong>{value}</strong>
-      {hint ? <span className="muted">{hint}</span> : null}
+      <p className="stat-label">{label}</p>
+      <p className="stat-value">{value}</p>
+      {hint ? <p className="stat-hint">{hint}</p> : null}
     </article>
   );
 }

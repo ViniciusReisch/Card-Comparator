@@ -3,7 +3,12 @@ type SourceBadgeProps = {
 };
 
 export function SourceBadge({ source }: SourceBadgeProps) {
-  const label = source === "LIGA_POKEMON" ? "Liga Pokemon" : "CardTrader";
-  return <span className={`pill pill-${source.toLowerCase()}`}>{label}</span>;
+  if (source === "LIGA_POKEMON") {
+    return <span className="badge badge-source-liga">Liga Pokémon</span>;
+  }
+  if (source === "CARDTRADER") {
+    return <span className="badge badge-source-ct">CardTrader</span>;
+  }
+  return <span className="badge">{source}</span>;
 }
 
