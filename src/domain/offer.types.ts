@@ -8,21 +8,26 @@ export const normalizedLanguages = [
   "ITALIAN",
   "FRENCH",
   "GERMAN",
+  "KOREAN",
+  "CHINESE_SIMPLIFIED",
+  "CHINESE_TRADITIONAL",
+  "THAI",
+  "INDONESIAN",
+  "RUSSIAN",
+  "DUTCH",
   "UNKNOWN"
 ] as const;
 
 export type NormalizedLanguage = (typeof normalizedLanguages)[number];
 
 export const normalizedConditions = [
-  "MINT",
-  "NEAR_MINT",
-  "EXCELLENT",
-  "SLIGHTLY_PLAYED",
-  "MODERATELY_PLAYED",
-  "PLAYED",
-  "HEAVILY_PLAYED",
-  "POOR",
-  "DAMAGED",
+  "M",
+  "NM",
+  "EX",
+  "SP",
+  "MP",
+  "PL",
+  "PO",
   "UNKNOWN"
 ] as const;
 
@@ -64,6 +69,9 @@ export type OfferListItem = {
   conditionNormalized: NormalizedCondition | "UNKNOWN";
   priceCents: number;
   currency: string;
+  priceBrlCents: number | null;
+  exchangeRateToBrl: number | null;
+  exchangeRateDate: string | null;
   imageUrl: string | null;
   offerUrl: string | null;
   sellerName: string | null;
@@ -75,4 +83,3 @@ export type OfferListItem = {
   firstSeenAt: string;
   lastSeenAt: string;
 };
-
