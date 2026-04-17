@@ -19,7 +19,12 @@ export const monitorConfig = {
   },
   delays: {
     requestMs: env.REQUEST_DELAY_MS,
-    slowMo: env.SLOW_MO
+    slowMo: env.SLOW_MO,
+    fastMode: env.SCRAPER_FAST_MODE
+  },
+  monitor: {
+    statusPollIntervalMs: env.MONITOR_STATUS_POLL_INTERVAL_MS,
+    detailConcurrency: env.DETAIL_CONCURRENCY,
+    cardDetailTimeoutMs: env.CARD_DETAIL_TIMEOUT_MS
   }
 } as const;
-
