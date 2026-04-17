@@ -6,6 +6,8 @@ import { OfferTable } from "../components/OfferTable";
 import { SourceBadge } from "../components/SourceBadge";
 
 const defaultFilters = {
+  newOnly: false,
+  activeOnly: false,
   source: "",
   language: "",
   condition: "",
@@ -26,7 +28,7 @@ export function CardDetailPage() {
 
   async function loadData(currentFilters = filters) {
     if (!Number.isFinite(cardId)) {
-      setError("Card inválido.");
+      setError("Card invalido.");
       return;
     }
 
@@ -34,6 +36,10 @@ export function CardDetailPage() {
       setError(null);
       const search = new URLSearchParams();
       for (const [key, value] of Object.entries(currentFilters)) {
+        if (typeof value === "boolean") {
+          if (value) search.set(key, "true");
+          continue;
+        }
         if (value) search.set(key, value);
       }
       search.set("limit", "200");
@@ -45,12 +51,14 @@ export function CardDetailPage() {
 
       setCard(cardResponse);
       setOffers(offerResponse);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao carregar detalhe do card.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Falha ao carregar detalhe do card.");
     }
   }
 
-  useEffect(() => { void loadData(defaultFilters); }, [cardId]);
+  useEffect(() => {
+    void loadData(defaultFilters);
+  }, [cardId]);
 
   const offersBySource = useMemo(() => {
     const grouped = new Map<string, OfferItem[]>();
@@ -68,14 +76,14 @@ export function CardDetailPage() {
     <section className="stack">
       <div className="topbar">
         <Link to="/cards" className="btn btn-ghost btn-sm" style={{ marginBottom: "0.75rem" }}>
-          ← Voltar
+          Voltar
         </Link>
         <h2 className="topbar-title">{card?.name ?? "Carregando..."}</h2>
       </div>
 
       <div className="page-content">
         <div className="stack">
-          {error && <div className="notice notice-error">{error}</div>}
+          {error ? <div className="notice notice-error">{error}</div> : null}
 
           {!card ? (
             <div className="notice">Carregando card...</div>
@@ -83,15 +91,17 @@ export function CardDetailPage() {
             <>
               <div className="detail-hero">
                 <div className="detail-image-shell">
-                  {card.imageUrl
-                    ? <img src={card.imageUrl} alt={card.name} />
-                    : <div className="image-fallback" style={{ height: "100%" }}>R</div>}
+                  {card.imageUrl ? (
+                    <img src={card.imageUrl} alt={card.name} />
+                  ) : (
+                    <div className="image-fallback" style={{ height: "100%" }}>R</div>
+                  )}
                 </div>
                 <div className="detail-copy">
                   <p className="eyebrow">Detalhe do card</p>
                   <h3 className="detail-title">{card.name}</h3>
                   <p className="detail-subtitle">
-                    {card.setName ?? "Coleção não identificada"}
+                    {card.setName ?? "Colecao nao identificada"}
                     {card.year ? ` · ${card.year}` : ""}
                     {card.number ? ` · #${card.number}` : ""}
                   </p>
@@ -102,12 +112,12 @@ export function CardDetailPage() {
                   </div>
                   <div className="detail-stats">
                     <span className="muted">{offers?.pagination.total ?? 0} ofertas encontradas</span>
-                    {minBrl && (
+                    {minBrl ? (
                       <div>
                         <span className="muted" style={{ fontSize: "0.75rem", marginRight: "0.3rem" }}>A partir de</span>
                         <strong className="price-brl" style={{ fontSize: "1.1rem" }}>{minBrl}</strong>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -124,6 +134,7 @@ export function CardDetailPage() {
                     setFilters(defaultFilters);
                     void loadData(defaultFilters);
                   }}
+                  showSearch
                 />
               </div>
 
@@ -133,7 +144,7 @@ export function CardDetailPage() {
                 offersBySource.map(([source, groupedOffers]) => (
                   <OfferTable
                     key={source}
-                    title={source === "LIGA_POKEMON" ? "Liga Pokémon" : "CardTrader"}
+                    title={source === "LIGA_POKEMON" ? "Liga Pokemon" : "CardTrader"}
                     offers={groupedOffers}
                   />
                 ))

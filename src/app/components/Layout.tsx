@@ -1,10 +1,10 @@
 import { NavLink, Outlet } from "react-router-dom";
 
 const navItems = [
-  { to: "/dashboard", label: "Dashboard", icon: "◈" },
-  { to: "/new-offers", label: "Novos Anúncios", icon: "✦" },
-  { to: "/cards", label: "Cards", icon: "🃏" },
-  { to: "/runs", label: "Execuções", icon: "⚙" }
+  { to: "/dashboard", label: "Dashboard", icon: "D" },
+  { to: "/offers", label: "Anuncios", icon: "A" },
+  { to: "/cards", label: "Cards", icon: "C" },
+  { to: "/runs", label: "Execucoes", icon: "R" }
 ];
 
 export function Layout() {
@@ -15,7 +15,9 @@ export function Layout() {
           <span className="brand-mark">R</span>
           <div>
             <h1 style={{ fontFamily: "inherit" }}>Rayquaza Monitor</h1>
-            <p style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "0.1rem" }}>card-comparator</p>
+            <p style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "0.1rem" }}>
+              card-comparator
+            </p>
           </div>
         </div>
 
@@ -35,8 +37,8 @@ export function Layout() {
         <div className="sidebar-section">
           <p className="sidebar-label">Fontes monitoradas</p>
           <div style={{ padding: "0.5rem 0.75rem", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-            <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)" }}>🇧🇷 Liga Pokémon</span>
-            <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)" }}>🌐 CardTrader</span>
+            <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)" }}>Liga Pokemon</span>
+            <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)" }}>CardTrader</span>
           </div>
         </div>
       </aside>
