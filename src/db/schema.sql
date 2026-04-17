@@ -45,6 +45,11 @@ CREATE TABLE IF NOT EXISTS offers (
   condition_normalized TEXT,
   price_cents INTEGER NOT NULL,
   currency TEXT NOT NULL,
+  original_price_cents INTEGER,
+  original_currency TEXT,
+  price_brl_cents INTEGER,
+  exchange_rate_to_brl REAL,
+  exchange_rate_date TEXT,
   image_url TEXT,
   offer_url TEXT,
   seller_name TEXT,
@@ -112,10 +117,11 @@ CREATE TABLE IF NOT EXISTS price_history (
   offer_id INTEGER NOT NULL,
   price_cents INTEGER NOT NULL,
   currency TEXT NOT NULL,
+  price_brl_cents INTEGER,
+  exchange_rate_to_brl REAL,
   seen_at TEXT NOT NULL,
   FOREIGN KEY (offer_id) REFERENCES offers (id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_price_history_offer_id
   ON price_history (offer_id, seen_at DESC);
-

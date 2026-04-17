@@ -1,5 +1,6 @@
 import { DiffService } from "./diff.service";
 import { RunService, type MonitorRunSummary, type SourceRunSummary } from "./run.service";
+import { currencyConverter } from "./currency-converter";
 import { scrapeLigaPokemon } from "../sources/ligapokemon/ligapokemon.scraper";
 import { scrapeCardTrader } from "../sources/cardtrader/cardtrader.scraper";
 
@@ -19,7 +20,6 @@ export class MonitorService {
     }
 
     this.runService.assertCanRun();
-
     activeMonitorPromise = this.executeRun();
 
     try {
@@ -30,6 +30,8 @@ export class MonitorService {
   }
 
   private async executeRun(): Promise<MonitorRunSummary> {
+    await currencyConverter.initialize();
+
     const run = this.runService.startRun();
     this.diffService.resetNewOfferFlags();
 
@@ -77,7 +79,6 @@ export class MonitorService {
         if (sourceStatus === "partial" && finalStatus === "success") {
           finalStatus = "partial";
         }
-
         if (sourceStatus === "error") {
           finalStatus = "partial";
         }

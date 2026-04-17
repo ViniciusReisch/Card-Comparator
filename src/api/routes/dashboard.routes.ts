@@ -14,6 +14,8 @@ export function createDashboardRouter(): Router {
     const latestRun = runRepository.getLatestRun();
     const lowestPriceOffer = offerRepository.getLowestActiveOffer();
     const recentNewOffers = offerRepository.listLatestNewOffers(12);
+    const languageDistribution = offerRepository.getLanguageDistribution();
+    const conditionDistribution = offerRepository.getConditionDistribution();
 
     res.json({
       stats: {
@@ -24,6 +26,7 @@ export function createDashboardRouter(): Router {
           ? {
               priceCents: lowestPriceOffer.price_cents,
               currency: lowestPriceOffer.currency,
+              priceBrlCents: lowestPriceOffer.price_brl_cents,
               cardName: lowestPriceOffer.card_name,
               source: lowestPriceOffer.source,
               offerUrl: lowestPriceOffer.offer_url
@@ -31,10 +34,13 @@ export function createDashboardRouter(): Router {
           : null,
         latestRun: latestRun ? mapRun(latestRun) : null
       },
-      recentNewOffers: recentNewOffers.map(mapOffer)
+      recentNewOffers: recentNewOffers.map(mapOffer),
+      distributions: {
+        language: languageDistribution,
+        condition: conditionDistribution
+      }
     });
   });
 
   return router;
 }
-

@@ -15,6 +15,11 @@ export type OfferRecordInput = {
   conditionNormalized: string | null;
   priceCents: number;
   currency: string;
+  originalPriceCents: number | null;
+  originalCurrency: string | null;
+  priceBrlCents: number | null;
+  exchangeRateToBrl: number | null;
+  exchangeRateDate: string | null;
   imageUrl: string | null;
   offerUrl: string | null;
   sellerName: string | null;
@@ -43,6 +48,11 @@ export type OfferRecord = {
   condition_normalized: string | null;
   price_cents: number;
   currency: string;
+  original_price_cents: number | null;
+  original_currency: string | null;
+  price_brl_cents: number | null;
+  exchange_rate_to_brl: number | null;
+  exchange_rate_date: string | null;
   image_url: string | null;
   offer_url: string | null;
   seller_name: string | null;
@@ -75,6 +85,7 @@ export type OfferListFilters = {
   year?: number;
   dateFrom?: string;
   dateTo?: string;
+  search?: string;
   onlyNew?: boolean;
   onlyActive?: boolean;
   cardGroup?: {
@@ -119,12 +130,12 @@ export class OfferRepository {
     }
 
     if (typeof filters.minPriceCents === "number") {
-      conditions.push("o.price_cents >= ?");
+      conditions.push("COALESCE(o.price_brl_cents, o.price_cents) >= ?");
       params.push(filters.minPriceCents);
     }
 
     if (typeof filters.maxPriceCents === "number") {
-      conditions.push("o.price_cents <= ?");
+      conditions.push("COALESCE(o.price_brl_cents, o.price_cents) <= ?");
       params.push(filters.maxPriceCents);
     }
 
@@ -146,6 +157,12 @@ export class OfferRepository {
     if (filters.dateTo) {
       conditions.push("o.first_seen_at <= ?");
       params.push(filters.dateTo);
+    }
+
+    if (filters.search) {
+      const searchTerm = `%${filters.search.toLowerCase()}%`;
+      conditions.push("(LOWER(o.card_name) LIKE ? OR LOWER(COALESCE(o.set_name,'')) LIKE ? OR LOWER(COALESCE(o.seller_name,'')) LIKE ? OR LOWER(COALESCE(o.store_name,'')) LIKE ?)");
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     if (filters.onlyNew) {
@@ -201,15 +218,20 @@ export class OfferRepository {
       .get(input.canonicalOfferKey) as OfferRecord | undefined;
   }
 
-  private addPriceHistory(offerId: number, priceCents: number, currency: string, seenAt: string): void {
+  private addPriceHistory(
+    offerId: number,
+    priceCents: number,
+    currency: string,
+    priceBrlCents: number | null,
+    exchangeRateToBrl: number | null,
+    seenAt: string
+  ): void {
     this.database
       .prepare(
-        `
-          INSERT INTO price_history (offer_id, price_cents, currency, seen_at)
-          VALUES (?, ?, ?, ?)
-        `
+        `INSERT INTO price_history (offer_id, price_cents, currency, price_brl_cents, exchange_rate_to_brl, seen_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(offerId, priceCents, currency, seenAt);
+      .run(offerId, priceCents, currency, priceBrlCents ?? null, exchangeRateToBrl ?? null, seenAt);
   }
 
   upsert(input: OfferRecordInput): OfferUpsertResult {
@@ -218,72 +240,30 @@ export class OfferRepository {
     if (!existing) {
       const result = this.database
         .prepare(
-          `
-            INSERT INTO offers (
-              card_id,
-              source,
-              source_offer_id,
-              canonical_offer_key,
-              card_name,
-              set_name,
-              set_code,
-              year,
-              language_raw,
-              language_normalized,
-              condition_raw,
-              condition_normalized,
-              price_cents,
-              currency,
-              image_url,
-              offer_url,
-              seller_name,
-              seller_country,
-              store_name,
-              quantity,
-              is_new,
-              is_active,
-              first_seen_at,
-              last_seen_at,
-              last_price_cents,
-              missing_count,
-              raw_hash,
-              raw_json
+          `INSERT INTO offers (
+              card_id, source, source_offer_id, canonical_offer_key,
+              card_name, set_name, set_code, year,
+              language_raw, language_normalized, condition_raw, condition_normalized,
+              price_cents, currency,
+              original_price_cents, original_currency, price_brl_cents, exchange_rate_to_brl, exchange_rate_date,
+              image_url, offer_url, seller_name, seller_country, store_name, quantity,
+              is_new, is_active, first_seen_at, last_seen_at, last_price_cents, missing_count,
+              raw_hash, raw_json
             ) VALUES (
-              @cardId,
-              @source,
-              @sourceOfferId,
-              @canonicalOfferKey,
-              @cardName,
-              @setName,
-              @setCode,
-              @year,
-              @languageRaw,
-              @languageNormalized,
-              @conditionRaw,
-              @conditionNormalized,
-              @priceCents,
-              @currency,
-              @imageUrl,
-              @offerUrl,
-              @sellerName,
-              @sellerCountry,
-              @storeName,
-              @quantity,
-              1,
-              1,
-              @firstSeenAt,
-              @lastSeenAt,
-              @priceCents,
-              0,
-              @rawHash,
-              @rawJson
-            )
-          `
+              @cardId, @source, @sourceOfferId, @canonicalOfferKey,
+              @cardName, @setName, @setCode, @year,
+              @languageRaw, @languageNormalized, @conditionRaw, @conditionNormalized,
+              @priceCents, @currency,
+              @originalPriceCents, @originalCurrency, @priceBrlCents, @exchangeRateToBrl, @exchangeRateDate,
+              @imageUrl, @offerUrl, @sellerName, @sellerCountry, @storeName, @quantity,
+              1, 1, @firstSeenAt, @lastSeenAt, @priceCents, 0,
+              @rawHash, @rawJson
+            )`
         )
         .run(input);
 
       const offer = this.findById(Number(result.lastInsertRowid))!;
-      this.addPriceHistory(offer.id, offer.price_cents, offer.currency, offer.first_seen_at);
+      this.addPriceHistory(offer.id, offer.price_cents, offer.currency, offer.price_brl_cents, offer.exchange_rate_to_brl, offer.first_seen_at);
       return { offer, wasInserted: true, priceChanged: false };
     }
 
@@ -291,38 +271,22 @@ export class OfferRepository {
 
     this.database
       .prepare(
-        `
-          UPDATE offers
-          SET
-            card_id = @cardId,
-            source = @source,
-            source_offer_id = @sourceOfferId,
-            canonical_offer_key = @canonicalOfferKey,
-            card_name = @cardName,
-            set_name = @setName,
-            set_code = @setCode,
-            year = @year,
-            language_raw = @languageRaw,
-            language_normalized = @languageNormalized,
-            condition_raw = @conditionRaw,
-            condition_normalized = @conditionNormalized,
-            price_cents = @priceCents,
-            currency = @currency,
-            image_url = @imageUrl,
-            offer_url = @offerUrl,
-            seller_name = @sellerName,
-            seller_country = @sellerCountry,
-            store_name = @storeName,
-            quantity = @quantity,
-            is_new = 0,
-            is_active = 1,
-            last_seen_at = @lastSeenAt,
-            last_price_cents = @lastPriceCents,
-            missing_count = 0,
-            raw_hash = @rawHash,
-            raw_json = @rawJson
-          WHERE id = @id
-        `
+        `UPDATE offers SET
+            card_id = @cardId, source = @source, source_offer_id = @sourceOfferId,
+            canonical_offer_key = @canonicalOfferKey, card_name = @cardName,
+            set_name = @setName, set_code = @setCode, year = @year,
+            language_raw = @languageRaw, language_normalized = @languageNormalized,
+            condition_raw = @conditionRaw, condition_normalized = @conditionNormalized,
+            price_cents = @priceCents, currency = @currency,
+            original_price_cents = @originalPriceCents, original_currency = @originalCurrency,
+            price_brl_cents = @priceBrlCents, exchange_rate_to_brl = @exchangeRateToBrl,
+            exchange_rate_date = @exchangeRateDate,
+            image_url = @imageUrl, offer_url = @offerUrl, seller_name = @sellerName,
+            seller_country = @sellerCountry, store_name = @storeName, quantity = @quantity,
+            is_new = 0, is_active = 1, last_seen_at = @lastSeenAt,
+            last_price_cents = @lastPriceCents, missing_count = 0,
+            raw_hash = @rawHash, raw_json = @rawJson
+          WHERE id = @id`
       )
       .run({
         ...input,
@@ -331,7 +295,7 @@ export class OfferRepository {
       });
 
     if (priceChanged) {
-      this.addPriceHistory(existing.id, input.priceCents, input.currency, input.lastSeenAt);
+      this.addPriceHistory(existing.id, input.priceCents, input.currency, input.priceBrlCents, input.exchangeRateToBrl, input.lastSeenAt);
     }
 
     return {
@@ -345,32 +309,24 @@ export class OfferRepository {
     if (seenOfferIds.length === 0) {
       this.database
         .prepare(
-          `
-            UPDATE offers
-            SET
+          `UPDATE offers SET
               missing_count = missing_count + 1,
               is_active = CASE WHEN missing_count + 1 >= 3 THEN 0 ELSE 1 END
-            WHERE source = ? AND is_active = 1
-          `
+            WHERE source = ? AND is_active = 1`
         )
         .run(source);
       return;
     }
 
     const placeholders = seenOfferIds.map(() => "?").join(", ");
-    const statement = this.database.prepare(
-      `
-        UPDATE offers
-        SET
-          missing_count = missing_count + 1,
-          is_active = CASE WHEN missing_count + 1 >= 3 THEN 0 ELSE 1 END
-        WHERE source = ?
-          AND is_active = 1
-          AND id NOT IN (${placeholders})
-      `
-    );
-
-    statement.run(source, ...seenOfferIds);
+    this.database
+      .prepare(
+        `UPDATE offers SET
+            missing_count = missing_count + 1,
+            is_active = CASE WHEN missing_count + 1 >= 3 THEN 0 ELSE 1 END
+          WHERE source = ? AND is_active = 1 AND id NOT IN (${placeholders})`
+      )
+      .run(source, ...seenOfferIds);
   }
 
   listOffers(filters: OfferListFilters): {
@@ -386,19 +342,16 @@ export class OfferRepository {
 
     const totalRow = this.database
       .prepare(
-        `
-          SELECT COUNT(*) AS count
-          FROM offers o
-          INNER JOIN cards c ON c.id = o.card_id
-          WHERE ${whereSql}
-        `
+        `SELECT COUNT(*) AS count
+         FROM offers o
+         INNER JOIN cards c ON c.id = o.card_id
+         WHERE ${whereSql}`
       )
       .get(...params) as { count: number };
 
     const items = this.database
       .prepare(
-        `
-          SELECT
+        `SELECT
             o.*,
             c.number AS card_number,
             c.image_url AS card_image_url,
@@ -406,25 +359,18 @@ export class OfferRepository {
           FROM offers o
           INNER JOIN cards c ON c.id = o.card_id
           WHERE ${whereSql}
-          ORDER BY o.first_seen_at DESC, o.price_cents ASC, o.id DESC
-          LIMIT ? OFFSET ?
-        `
+          ORDER BY o.first_seen_at DESC, COALESCE(o.price_brl_cents, o.price_cents) ASC, o.id DESC
+          LIMIT ? OFFSET ?`
       )
       .all(...params, limit, offset) as OfferListRecord[];
 
-    return {
-      items,
-      total: totalRow.count,
-      page,
-      limit
-    };
+    return { items, total: totalRow.count, page, limit };
   }
 
   countActiveOffers(): number {
     const row = this.database
       .prepare("SELECT COUNT(*) AS count FROM offers WHERE is_active = 1")
       .get() as { count: number };
-
     return row.count;
   }
 
@@ -432,25 +378,18 @@ export class OfferRepository {
     const row = this.database
       .prepare("SELECT COUNT(*) AS count FROM offers WHERE is_new = 1")
       .get() as { count: number };
-
     return row.count;
   }
 
   getLowestActiveOffer(): OfferListRecord | undefined {
     return this.database
       .prepare(
-        `
-          SELECT
-            o.*,
-            c.number AS card_number,
-            c.image_url AS card_image_url,
-            c.id AS origin_card_id
-          FROM offers o
-          INNER JOIN cards c ON c.id = o.card_id
-          WHERE o.is_active = 1
-          ORDER BY o.price_cents ASC, o.id ASC
-          LIMIT 1
-        `
+        `SELECT o.*, c.number AS card_number, c.image_url AS card_image_url, c.id AS origin_card_id
+         FROM offers o
+         INNER JOIN cards c ON c.id = o.card_id
+         WHERE o.is_active = 1
+         ORDER BY COALESCE(o.price_brl_cents, o.price_cents) ASC, o.id ASC
+         LIMIT 1`
       )
       .get() as OfferListRecord | undefined;
   }
@@ -458,19 +397,35 @@ export class OfferRepository {
   listLatestNewOffers(limit = 10): OfferListRecord[] {
     return this.database
       .prepare(
-        `
-          SELECT
-            o.*,
-            c.number AS card_number,
-            c.image_url AS card_image_url,
-            c.id AS origin_card_id
-          FROM offers o
-          INNER JOIN cards c ON c.id = o.card_id
-          WHERE o.is_new = 1
-          ORDER BY o.first_seen_at DESC, o.id DESC
-          LIMIT ?
-        `
+        `SELECT o.*, c.number AS card_number, c.image_url AS card_image_url, c.id AS origin_card_id
+         FROM offers o
+         INNER JOIN cards c ON c.id = o.card_id
+         WHERE o.is_new = 1
+         ORDER BY o.first_seen_at DESC, o.id DESC
+         LIMIT ?`
       )
       .all(limit) as OfferListRecord[];
+  }
+
+  getLanguageDistribution(): Array<{ language: string; count: number }> {
+    return this.database
+      .prepare(
+        `SELECT COALESCE(language_normalized, 'UNKNOWN') AS language, COUNT(*) AS count
+         FROM offers WHERE is_active = 1
+         GROUP BY language_normalized
+         ORDER BY count DESC`
+      )
+      .all() as Array<{ language: string; count: number }>;
+  }
+
+  getConditionDistribution(): Array<{ condition: string; count: number }> {
+    return this.database
+      .prepare(
+        `SELECT COALESCE(condition_normalized, 'UNKNOWN') AS condition, COUNT(*) AS count
+         FROM offers WHERE is_active = 1
+         GROUP BY condition_normalized
+         ORDER BY count DESC`
+      )
+      .all() as Array<{ condition: string; count: number }>;
   }
 }

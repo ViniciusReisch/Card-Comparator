@@ -6,6 +6,7 @@ export type DashboardResponse = {
     lowestPrice: {
       priceCents: number;
       currency: string;
+      priceBrlCents: number | null;
       cardName: string;
       source: string;
       offerUrl: string | null;
@@ -31,6 +32,10 @@ export type DashboardResponse = {
     } | null;
   };
   recentNewOffers: OfferItem[];
+  distributions?: {
+    language: Array<{ language: string; count: number }>;
+    condition: Array<{ condition: string; count: number }>;
+  };
 };
 
 export type CardItem = {
@@ -62,10 +67,12 @@ export type OfferItem = {
   conditionNormalized: string | null;
   priceCents: number;
   currency: string;
+  priceBrlCents: number | null;
+  exchangeRateToBrl: number | null;
+  exchangeRateDate: string | null;
   imageUrl: string | null;
   offerUrl: string | null;
   sellerName: string | null;
-  sellerCountry: string | null;
   storeName: string | null;
   quantity: number | null;
   isNew: boolean;
@@ -121,13 +128,31 @@ export type RunsResponse = {
   }>;
 };
 
+export function formatBrl(priceCents: number | null | undefined): string {
+  if (priceCents == null) return "—";
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(priceCents / 100);
+}
+
+export function formatOriginalPrice(priceCents: number, currency: string): string {
+  if (currency === "BRL" || currency === "UNKNOWN") return "";
+  try {
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(priceCents / 100);
+  } catch {
+    return `${(priceCents / 100).toFixed(2)} ${currency}`;
+  }
+}
+
+export function getPrimaryPrice(offer: { priceCents: number; currency: string; priceBrlCents?: number | null }): string {
+  if (offer.priceBrlCents && offer.priceBrlCents > 0) return formatBrl(offer.priceBrlCents);
+  if (offer.currency === "BRL") return formatBrl(offer.priceCents);
+  return formatBrl(offer.priceCents);
+}
+
 const baseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3333";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
-    headers: {
-      "Content-Type": "application/json"
-    },
+    headers: { "Content-Type": "application/json" },
     ...init
   });
 
@@ -166,8 +191,6 @@ export const apiClient = {
     return request<RunsResponse>("/api/runs");
   },
   runMonitor(): Promise<unknown> {
-    return request("/api/monitor/run", {
-      method: "POST"
-    });
+    return request("/api/monitor/run", { method: "POST" });
   }
 };

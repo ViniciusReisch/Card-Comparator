@@ -4,11 +4,7 @@ import type { MonitorRunRecord, MonitorRunSourceRecord } from "../../db/reposito
 
 function readQueryValue(query: Record<string, unknown>, key: string): string | undefined {
   const value = query[key];
-
-  if (Array.isArray(value)) {
-    return typeof value[0] === "string" ? value[0] : undefined;
-  }
-
+  if (Array.isArray(value)) return typeof value[0] === "string" ? value[0] : undefined;
   return typeof value === "string" ? value : undefined;
 }
 
@@ -19,10 +15,7 @@ export function readStringQuery(query: Record<string, unknown>, key: string): st
 
 export function readNumberQuery(query: Record<string, unknown>, key: string): number | undefined {
   const value = readQueryValue(query, key);
-  if (!value) {
-    return undefined;
-  }
-
+  if (!value) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
@@ -53,6 +46,7 @@ export function buildOfferFilters(
     year: readNumberQuery(query, "year"),
     dateFrom: readStringQuery(query, "dateFrom"),
     dateTo: readStringQuery(query, "dateTo"),
+    search: readStringQuery(query, "search"),
     onlyNew: overrides.onlyNew ?? false,
     onlyActive: overrides.onlyActive ?? true,
     page: overrides.page ?? readPage(query),
@@ -93,10 +87,12 @@ export function mapOffer(record: OfferListRecord) {
     conditionNormalized: record.condition_normalized,
     priceCents: record.price_cents,
     currency: record.currency,
+    priceBrlCents: record.price_brl_cents ?? null,
+    exchangeRateToBrl: record.exchange_rate_to_brl ?? null,
+    exchangeRateDate: record.exchange_rate_date ?? null,
     imageUrl: record.image_url ?? record.card_image_url,
     offerUrl: record.offer_url,
     sellerName: record.seller_name,
-    sellerCountry: record.seller_country,
     storeName: record.store_name,
     quantity: record.quantity,
     isNew: Boolean(record.is_new),
@@ -128,4 +124,3 @@ export function mapRun(run: MonitorRunRecord, sources: MonitorRunSourceRecord[] 
     }))
   };
 }
-

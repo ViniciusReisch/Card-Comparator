@@ -4,6 +4,7 @@ import { OfferRepository } from "../db/repositories/offer.repository";
 import type { SourceScrapeResult } from "../domain/card.types";
 import type { SourceKey, SourceScrapeStatus } from "../domain/source.types";
 import { buildCanonicalCardKey, buildCanonicalOfferKey } from "../normalizers/offer-key";
+import { currencyConverter } from "./currency-converter";
 
 export type PersistedSourceSummary = {
   source: SourceKey;
@@ -30,6 +31,7 @@ export class DiffService {
     const seenOfferIds = new Set<number>();
     let offersFound = 0;
     let newOffersFound = 0;
+    const langCounts: Record<string, number> = {};
 
     for (const card of result.cards) {
       const canonicalCardKey = buildCanonicalCardKey(card);
@@ -53,6 +55,14 @@ export class DiffService {
 
       for (const offer of card.offers) {
         const canonicalOfferKey = buildCanonicalOfferKey(offer);
+        const { priceBrlCents, exchangeRate, exchangeRateDate } = currencyConverter.convertToBrl(
+          offer.priceCents,
+          offer.currency
+        );
+
+        const lang = offer.languageNormalized ?? "UNKNOWN";
+        langCounts[lang] = (langCounts[lang] ?? 0) + 1;
+
         const upserted = this.offerRepository.upsert({
           cardId: cardRecord.id,
           source: offer.source,
@@ -68,6 +78,11 @@ export class DiffService {
           conditionNormalized: offer.conditionNormalized,
           priceCents: offer.priceCents,
           currency: offer.currency,
+          originalPriceCents: offer.priceCents,
+          originalCurrency: offer.currency,
+          priceBrlCents,
+          exchangeRateToBrl: exchangeRate,
+          exchangeRateDate,
           imageUrl: offer.imageUrl,
           offerUrl: offer.offerUrl,
           sellerName: offer.sellerName,
@@ -93,6 +108,14 @@ export class DiffService {
       this.offerRepository.reconcileMissingOffers(result.source, Array.from(seenOfferIds));
     }
 
+    const langLog = Object.entries(langCounts)
+      .sort(([, a], [, b]) => b - a)
+      .map(([l, c]) => `${l}:${c}`)
+      .join(" | ");
+    if (langLog) {
+      console.log(`[${result.source.toLowerCase()}] idiomas coletados: ${langLog}`);
+    }
+
     return {
       source: result.source,
       status: result.status,
@@ -103,4 +126,3 @@ export class DiffService {
     };
   }
 }
-
