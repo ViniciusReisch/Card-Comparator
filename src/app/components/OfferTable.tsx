@@ -15,49 +15,56 @@ export function OfferTable({ title, offers }: OfferTableProps) {
     <section className="panel" style={{ padding: 0, overflow: "hidden" }}>
       <div className="panel-header" style={{ padding: "1rem 1.25rem" }}>
         <div className="panel-title">{title}</div>
-        <span className="muted" style={{ fontSize: "0.8rem" }}>{offers.length} oferta{offers.length !== 1 ? "s" : ""}</span>
+        <span className="muted" style={{ fontSize: "0.8rem" }}>
+          {offers.length} oferta{offers.length !== 1 ? "s" : ""}
+        </span>
       </div>
 
       <div className="table-wrap">
         <table className="data-table">
           <thead>
             <tr>
-              <th>Preço (BRL)</th>
+              <th>Preco (BRL)</th>
               <th>Idioma</th>
               <th>Estado</th>
               <th>Vendedor / Loja</th>
-              <th>Primeira aparição</th>
+              <th>Primeira aparicao</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {offers.map((offer) => {
               const brl = formatBrl(offer.priceBrlCents ?? (offer.currency === "BRL" ? offer.priceCents : null));
-              const orig = formatOriginalPrice(offer.priceCents, offer.currency);
+              const original = formatOriginalPrice(offer.priceCents, offer.currency);
+
               return (
                 <tr key={offer.id}>
                   <td>
                     <span className="price-brl">{brl}</span>
-                    {orig && <span className="price-original">{orig}</span>}
+                    {original ? <span className="price-original">{original}</span> : null}
                   </td>
-                  <td><LanguageBadge value={offer.languageNormalized} /></td>
+                  <td>
+                    <LanguageBadge value={offer.languageNormalized} />
+                  </td>
                   <td>
                     <div className="badge-row">
                       <ConditionBadge value={offer.conditionNormalized} />
-                      {offer.isNew && <NewOfferBadge />}
+                      {offer.isNew ? <NewOfferBadge /> : null}
                     </div>
                   </td>
-                  <td style={{ fontSize: "0.85rem" }}>{offer.storeName ?? offer.sellerName ?? <span className="muted">—</span>}</td>
+                  <td style={{ fontSize: "0.85rem" }}>
+                    {offer.storeName ?? offer.sellerName ?? <span className="muted">-</span>}
+                  </td>
                   <td style={{ fontSize: "0.78rem", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
                     {format(new Date(offer.firstSeenAt), "dd/MM/yyyy HH:mm")}
                   </td>
                   <td>
                     {offer.offerUrl ? (
                       <a href={offer.offerUrl} target="_blank" rel="noreferrer" className="table-link">
-                        Abrir ↗
+                        Abrir
                       </a>
                     ) : (
-                      <span className="muted">—</span>
+                      <span className="muted">-</span>
                     )}
                   </td>
                 </tr>

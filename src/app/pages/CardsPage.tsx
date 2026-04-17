@@ -21,19 +21,21 @@ export function CardsPage() {
       params.set("limit", "80");
       const response = await apiClient.getCards(params);
       setData(response);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Falha ao carregar cards.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Falha ao carregar cards.");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { void loadCards(); }, []);
+  useEffect(() => {
+    void loadCards();
+  }, []);
 
   return (
     <section className="stack">
       <div className="topbar">
-        <h2 className="topbar-title">Cards Monitorados</h2>
+        <h2 className="topbar-title">Cards monitorados</h2>
         <p className="topbar-sub">
           {data ? `${data.pagination.total} cards encontrados` : "Todos os Rayquazas coletados"}
         </p>
@@ -48,25 +50,27 @@ export function CardsPage() {
                 <input
                   className="filter-input"
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  onChange={(event) => setQuery(event.target.value)}
                   placeholder="Rayquaza..."
-                  onKeyDown={(e) => { if (e.key === "Enter") void loadCards(); }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void loadCards();
+                  }}
                 />
               </div>
               <div className="filter-group">
-                <label className="filter-label">Coleção</label>
+                <label className="filter-label">Colecao</label>
                 <input
                   className="filter-input"
                   value={collection}
-                  onChange={(e) => setCollection(e.target.value)}
-                  placeholder="Base Set..."
+                  onChange={(event) => setCollection(event.target.value)}
+                  placeholder="Ex: Deoxys"
                 />
               </div>
               <div className="filter-group">
                 <label className="filter-label">Fonte</label>
-                <select className="filter-select" value={source} onChange={(e) => setSource(e.target.value)}>
+                <select className="filter-select" value={source} onChange={(event) => setSource(event.target.value)}>
                   <option value="">Todas</option>
-                  <option value="LIGA_POKEMON">Liga Pokémon</option>
+                  <option value="LIGA_POKEMON">Liga Pokemon</option>
                   <option value="CARDTRADER">CardTrader</option>
                 </select>
               </div>
@@ -78,7 +82,7 @@ export function CardsPage() {
             </div>
           </div>
 
-          {error && <div className="notice notice-error">{error}</div>}
+          {error ? <div className="notice notice-error">{error}</div> : null}
 
           {loading ? (
             <div className="notice">Carregando cards...</div>
