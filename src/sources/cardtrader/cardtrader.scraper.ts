@@ -22,10 +22,7 @@ type CardTraderBlueprintPoolItem = {
 };
 
 function extractCardIdFromUrl(value: string | null): string | null {
-  if (!value) {
-    return null;
-  }
-
+  if (!value) return null;
   const match = value.match(/\/products\/(\d+)/i) ?? value.match(/\/(\d+)(?:[/?#]|$)/);
   return match?.[1] ?? null;
 }
@@ -34,17 +31,13 @@ function decodeBlueprintIds(searchUrl: string): Set<number> {
   try {
     const url = new URL(searchUrl);
     const encodedIds = url.searchParams.get("ids");
-
-    if (!encodedIds) {
-      return new Set();
-    }
-
+    if (!encodedIds) return new Set();
     return new Set(
       Buffer.from(encodedIds, "base64")
         .toString("utf8")
         .split(",")
-        .map((value) => Number(value))
-        .filter((value) => Number.isFinite(value))
+        .map((v) => Number(v))
+        .filter((v) => Number.isFinite(v))
     );
   } catch {
     return new Set();
@@ -80,22 +73,12 @@ async function fetchListingCards(
     const rid = Number(entry.rid);
     const haystack = `${entry.n ?? ""} ${entry.x ?? ""} ${entry.lx ?? ""} ${entry.id ?? ""}`.toLowerCase();
 
-    if (ids.size > 0 && !ids.has(rid)) {
-      continue;
-    }
-
-    if (query && !haystack.includes(query)) {
-      continue;
-    }
-
-    if (!entry.id) {
-      continue;
-    }
+    if (ids.size > 0 && !ids.has(rid)) continue;
+    if (query && !haystack.includes(query)) continue;
+    if (!entry.id) continue;
 
     const detailUrl = `https://www.cardtrader.com/en/cards/${entry.id}`;
-    if (seenUrls.has(detailUrl)) {
-      continue;
-    }
+    if (seenUrls.has(detailUrl)) continue;
 
     seenUrls.add(detailUrl);
     cards.push({
@@ -113,9 +96,7 @@ async function fetchListingCards(
       rarity: null,
       imageUrl: null,
       detailUrl,
-      raw: {
-        blueprintPool: entry
-      }
+      raw: { blueprintPool: entry }
     });
   }
 
@@ -129,11 +110,7 @@ async function extractDetail(page: Page): Promise<CardTraderDetailRaw> {
     let props: Record<string, unknown> | null = null;
 
     if (propsText) {
-      try {
-        props = JSON.parse(propsText) as Record<string, unknown>;
-      } catch {
-        props = null;
-      }
+      try { props = JSON.parse(propsText) as Record<string, unknown>; } catch { props = null; }
     }
 
     const blueprint =
@@ -154,43 +131,53 @@ async function extractDetail(page: Page): Promise<CardTraderDetailRaw> {
       imageCandidate = blueprint.image_url;
     } else if (blueprint && typeof blueprint.image === "object" && blueprint.image !== null) {
       const image = blueprint.image as Record<string, unknown>;
-
-      if (typeof image.url === "string") {
-        imageCandidate = image.url;
-      } else if (typeof image.show === "object" && image.show !== null) {
+      if (typeof image.url === "string") imageCandidate = image.url;
+      else if (typeof image.show === "object" && image.show !== null) {
         const showImage = image.show as Record<string, unknown>;
-        if (typeof showImage.url === "string") {
-          imageCandidate = showImage.url;
-        }
+        if (typeof showImage.url === "string") imageCandidate = showImage.url;
       }
     }
 
     let imageUrl: string | null = null;
     if (imageCandidate) {
-      if (imageCandidate.startsWith("//")) {
-        imageUrl = `${location.protocol}${imageCandidate}`;
-      } else if (/^https?:\/\//i.test(imageCandidate)) {
-        imageUrl = imageCandidate;
-      } else {
-        imageUrl = new URL(imageCandidate, location.origin).toString();
-      }
+      if (imageCandidate.startsWith("//")) imageUrl = `${location.protocol}${imageCandidate}`;
+      else if (/^https?:\/\//i.test(imageCandidate)) imageUrl = imageCandidate;
+      else imageUrl = new URL(imageCandidate, location.origin).toString();
     }
 
     const offers = Array.from(document.querySelectorAll<HTMLTableRowElement>("tr[data-product-id]")).map((row) => {
       const sellerAnchor = row.querySelector<HTMLAnchorElement>("td.products-table__seller a[href]");
       const sellerDesktop =
-        sellerAnchor?.querySelector<HTMLElement>(".d-none.d-sm-inline-block")?.textContent?.replace(/\s+/g, " ").trim() ??
-        "";
+        sellerAnchor?.querySelector<HTMLElement>(".d-none.d-sm-inline-block")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
       const sellerMobile =
         sellerAnchor?.querySelector<HTMLElement>(".d-sm-none")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
       const sellerFallback = sellerAnchor?.textContent?.replace(/\s+/g, " ").trim() ?? "";
       const sellerText = sellerDesktop || sellerMobile || sellerFallback || null;
+
+      // Language: try multiple selectors to capture all language variants
+      const langCell = row.querySelector<HTMLElement>("td.products-table__info--language, td[class*='language']");
+      const langElement =
+        langCell?.querySelector<HTMLElement>("[data-original-title], [title], .flag-icon, [class*='flag'], span") ??
+        row.querySelector<HTMLElement>(".products-table__info--language [data-original-title]") ??
+        row.querySelector<HTMLElement>(".products-table__info--language .flag-icon");
+
+      const languageText =
+        langElement?.getAttribute("data-original-title") ??
+        langElement?.getAttribute("title") ??
+        langElement?.textContent?.replace(/\s+/g, " ").trim() ??
+        langCell?.getAttribute("data-original-title") ??
+        langCell?.getAttribute("title") ??
+        null;
+
+      // Condition
       const conditionElement = row.querySelector<HTMLElement>(
         ".products-table__info--condition [data-original-title], .products-table__info--condition .badge"
       );
-      const languageElement = row.querySelector<HTMLElement>(
-        ".products-table__info--language [data-original-title], .products-table__info--language .flag-icon"
-      );
+      const conditionText =
+        conditionElement?.getAttribute("data-original-title") ??
+        conditionElement?.textContent?.replace(/\s+/g, " ").trim() ??
+        null;
+
       const countryElement = row.querySelector<HTMLElement>("td.products-table__seller .flag-icon[data-original-title]");
       const descriptionElement = row.querySelector<HTMLElement>(".products-table__description small");
       const priceElement = row.querySelector<HTMLElement>(".products-table__formatted-price");
@@ -213,14 +200,8 @@ async function extractDetail(page: Page): Promise<CardTraderDetailRaw> {
       return {
         sourceOfferId,
         priceText: priceElement?.textContent?.replace(/\s+/g, " ").trim() ?? null,
-        languageText:
-          languageElement?.getAttribute("data-original-title") ??
-          languageElement?.textContent?.replace(/\s+/g, " ").trim() ??
-          null,
-        conditionText:
-          conditionElement?.getAttribute("data-original-title") ??
-          conditionElement?.textContent?.replace(/\s+/g, " ").trim() ??
-          null,
+        languageText,
+        conditionText,
         sellerText,
         sellerCountry: countryElement?.getAttribute("data-original-title") ?? null,
         storeText: sellerText,
@@ -261,11 +242,7 @@ async function extractDetail(page: Page): Promise<CardTraderDetailRaw> {
             : null,
       imageUrl,
       offers: offers as CardTraderDetailRaw["offers"],
-      raw: {
-        pageTitle: document.title,
-        blueprintId: blueprint?.id ?? null,
-        rowCount: offers.length
-      }
+      raw: { pageTitle: document.title, blueprintId: blueprint?.id ?? null, rowCount: offers.length }
     };
   });
 }
@@ -275,7 +252,6 @@ async function saveFailureScreenshot(page: Page, name: string): Promise<string |
   mkdirSync(screenshotDir, { recursive: true });
   const fileName = `cardtrader-${Date.now()}-${slugifyText(name)}.png`;
   const filePath = path.join(screenshotDir, fileName);
-
   try {
     await page.screenshot({ path: filePath, fullPage: true });
     return filePath;
@@ -289,51 +265,49 @@ export async function scrapeCardTrader(): Promise<SourceScrapeResult> {
     headless: env.HEADLESS,
     slowMo: monitorConfig.delays.slowMo
   });
-
   const errors: string[] = [];
 
   try {
     const page = await browser.newPage();
-    page.setDefaultTimeout(15_000);
-    console.log("[cardtrader] opening search page");
+    page.setDefaultTimeout(20_000);
+    console.log("[cardtrader] abrindo pagina de busca");
 
     await page.goto(monitorConfig.sources.cardtrader.searchUrl, {
       waitUntil: "domcontentloaded",
       timeout: 30_000
     });
-    await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => undefined);
+    await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
     await page.waitForTimeout(env.REQUEST_DELAY_MS);
 
     const listingCards = await fetchListingCards(page.context().request, monitorConfig.sources.cardtrader.searchUrl);
-    console.log(`[cardtrader] resolved ${listingCards.length} cards from blueprint pool`);
+    console.log(`[cardtrader] ${listingCards.length} cards resolvidos do blueprint pool`);
 
     const results = [];
 
     for (const listing of listingCards) {
-      if (!listing.detailUrl) {
-        continue;
-      }
+      if (!listing.detailUrl) continue;
 
       const detailPage = await browser.newPage();
-      detailPage.setDefaultTimeout(15_000);
+      detailPage.setDefaultTimeout(20_000);
 
       try {
-        console.log(`[cardtrader] scraping detail ${listing.detailUrl}`);
+        console.log(`[cardtrader] scraping ${listing.detailUrl}`);
         await detailPage.goto(listing.detailUrl, {
           waitUntil: "domcontentloaded",
           timeout: 30_000
         });
-        await detailPage.waitForSelector("[data-react-class='ProductsIndexApp']", { timeout: 8_000 });
+        await detailPage.waitForSelector("[data-react-class='ProductsIndexApp']", { timeout: 10_000 });
         await detailPage.waitForSelector("tr[data-product-id]", { timeout: 8_000 }).catch(() => undefined);
         await detailPage.waitForTimeout(env.REQUEST_DELAY_MS);
 
         const detail = await extractDetail(detailPage);
+        console.log(`[cardtrader] ${listing.name ?? "?"} → ${detail.offers.length} ofertas`);
         results.push(mapCardTraderCard(listing, detail));
       } catch (error) {
         const screenshotPath = await saveFailureScreenshot(detailPage, listing.name ?? "rayquaza");
         const message = error instanceof Error ? error.message : "Unknown CardTrader detail error";
         errors.push(
-          `[cardtrader] failed card ${listing.detailUrl}: ${message}${screenshotPath ? ` (screenshot: ${screenshotPath})` : ""}`
+          `[cardtrader] falha ${listing.detailUrl}: ${message}${screenshotPath ? ` (screenshot: ${screenshotPath})` : ""}`
         );
         console.error(errors[errors.length - 1]);
       } finally {
@@ -342,8 +316,11 @@ export async function scrapeCardTrader(): Promise<SourceScrapeResult> {
     }
 
     if (results.length === 0) {
-      errors.push("[cardtrader] no cards were collected from the search source");
+      errors.push("[cardtrader] nenhum card coletado");
     }
+
+    const totalOffers = results.reduce((s, r) => s + r.offers.length, 0);
+    console.log(`[cardtrader] finalizou: ${results.length} cards, ${totalOffers} ofertas`);
 
     return {
       source: "CARDTRADER",
@@ -353,14 +330,8 @@ export async function scrapeCardTrader(): Promise<SourceScrapeResult> {
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown CardTrader scraper error";
-    console.error(`[cardtrader] fatal error: ${message}`);
-
-    return {
-      source: "CARDTRADER",
-      status: "error",
-      cards: [],
-      errors: [message]
-    };
+    console.error(`[cardtrader] erro fatal: ${message}`);
+    return { source: "CARDTRADER", status: "error", cards: [], errors: [message] };
   } finally {
     await browser.close().catch(() => undefined);
   }
