@@ -19,7 +19,7 @@ function extractCardIdFromUrl(value: string | null): string | null {
 
   const fromQuery = value.match(/[?&](?:id|card|cardid)=([^&#]+)/i);
   if (fromQuery) {
-    return decodeURIComponent(fromQuery[1]);
+    return decodeURIComponent(fromQuery[1] ?? "");
   }
 
   const fromPath = value.match(/\/(\d+)(?:[/?#]|$)/);
@@ -153,29 +153,6 @@ async function expandAllResults(page: Page): Promise<void> {
 
 async function extractDetail(page: Page): Promise<LigaPokemonDetailRaw> {
   return page.evaluate(({ nameSelectors, imageSelectors, offerSelectors }) => {
-    const getFirstText = (selectors: readonly string[]): string | null => {
-      for (const selector of selectors) {
-        const element = document.querySelector<HTMLElement>(selector);
-        const text = element?.textContent?.replace(/\s+/g, " ").trim();
-        if (text) {
-          return text;
-        }
-      }
-
-      return null;
-    };
-
-    const getFirstImage = (selectors: readonly string[]): string | null => {
-      for (const selector of selectors) {
-        const element = document.querySelector<HTMLImageElement>(selector);
-        if (element?.src) {
-          return element.src;
-        }
-      }
-
-      return null;
-    };
-
     const pricePattern = /(R\$|\$|€)\s*[\d.,]+/i;
     const languagePattern =
       /\b(portugues|portuguese|pt|ingles|english|en|japones|japanese|jp|espanhol|spanish|italiano|italian|frances|french|alemao|german)\b/i;
@@ -200,22 +177,33 @@ async function extractDetail(page: Page): Promise<LigaPokemonDetailRaw> {
           .map((element) => element.textContent?.replace(/\s+/g, " ").trim() ?? "")
           .filter(Boolean)
           .slice(0, 20);
+        const marketplaceLink = links.find((link) => /mp\/showcase\/home/i.test(link.href)) ?? null;
+        const marketplaceHref = marketplaceLink?.href ?? null;
+        const storeId = marketplaceHref?.match(/[?&]id=(\d+)/i)?.[1] ?? null;
+        const tcgId = marketplaceHref?.match(/[?&]tcg=(\d+)/i)?.[1] ?? null;
 
         const priceText = text.match(pricePattern)?.[0] ?? null;
         const languageText = chunks.find((chunk) => languagePattern.test(chunk)) ?? text.match(languagePattern)?.[0] ?? null;
         const conditionText = chunks.find((chunk) => conditionPattern.test(chunk)) ?? text.match(conditionPattern)?.[0] ?? null;
         const quantityChunk = chunks.find((chunk) => /\b(qtd|quantidade|disponivel|estoque)\b/i.test(chunk)) ?? null;
-        const quantityMatch = quantityChunk?.match(/\d+/)?.[0] ?? text.match(/\b(?:qtd|quantidade|disponivel|estoque)[:\s]*(\d+)/i)?.[1] ?? null;
+        const quantityMatch =
+          quantityChunk?.match(/\d+/)?.[0] ??
+          text.match(/\b(?:qtd|quantidade|disponivel|estoque)[:\s]*(\d+)/i)?.[1] ??
+          text.match(/\bde\s+(\d+)\b/i)?.[1] ??
+          null;
         const sellerText =
           links.find((link) => link.textContent?.trim() && !pricePattern.test(link.textContent))?.textContent?.trim() ??
+          (storeId ? `STORE_${storeId}` : null) ??
           chunks.find((chunk) => !pricePattern.test(chunk) && chunk !== languageText && chunk !== conditionText) ??
           null;
         const storeText =
           row.querySelector<HTMLElement>("strong,b,h3,h4")?.textContent?.replace(/\s+/g, " ").trim() ??
+          (storeId ? `STORE_${storeId}` : null) ??
           sellerText;
-        const offerUrl = links[0]?.href ?? null;
-        const imageUrl = images[0]?.src ?? null;
-        const sourceOfferId = offerUrl?.match(/\/(\d+)(?:[/?#]|$)/)?.[1] ?? null;
+        const offerUrl = marketplaceHref ?? links[0]?.href ?? null;
+        const imageUrl =
+          images.find((image) => !/icon-|comparador\//i.test(image.src))?.src ?? null;
+        const sourceOfferId = tcgId ?? row.id?.replace(/^mpline_/, "") ?? offerUrl?.match(/\/(\d+)(?:[/?#]|$)/)?.[1] ?? null;
         const key = [offerUrl ?? "", sellerText ?? "", priceText ?? "", conditionText ?? "", languageText ?? ""].join("|");
 
         if (!uniqueOffers.has(key)) {
@@ -239,15 +227,34 @@ async function extractDetail(page: Page): Promise<LigaPokemonDetailRaw> {
     }
 
     const pageText = document.body.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    let name: string | null = null;
+    let imageUrl: string | null = null;
+
+    for (const selector of nameSelectors) {
+      const element = document.querySelector<HTMLElement>(selector);
+      const text = element?.textContent?.replace(/\s+/g, " ").trim();
+      if (text) {
+        name = text;
+        break;
+      }
+    }
+
+    for (const selector of imageSelectors) {
+      const element = document.querySelector<HTMLImageElement>(selector);
+      if (element?.src) {
+        imageUrl = element.src;
+        break;
+      }
+    }
 
     return {
-      name: getFirstText(nameSelectors),
+      name,
       setName: pageText.match(/(Scarlet.*?|Sword.*?|Sun.*?|XY.*?|Black.*?|Promo.*?)($|\s{2,})/i)?.[1] ?? null,
       setCode: pageText.match(/\b[A-Z]{2,5}\d{0,3}\b/)?.[0] ?? null,
       year: Number(pageText.match(/\b(19|20)\d{2}\b/)?.[0] ?? 0) || null,
       number: pageText.match(/(?:No\.?|Numero|#)\s*([A-Z0-9/-]+)/i)?.[1] ?? null,
       rarity: pageText.match(/\b(Common|Uncommon|Rare|Ultra Rare|Secret Rare|Promo)\b/i)?.[0] ?? null,
-      imageUrl: getFirstImage(imageSelectors),
+      imageUrl,
       offers: Array.from(uniqueOffers.values()) as LigaPokemonDetailRaw["offers"],
       raw: {
         pageTitle: document.title,
@@ -358,4 +365,3 @@ export async function scrapeLigaPokemon(): Promise<SourceScrapeResult> {
     await browser.close().catch(() => undefined);
   }
 }
-

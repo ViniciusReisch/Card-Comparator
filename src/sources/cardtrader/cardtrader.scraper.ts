@@ -86,29 +86,6 @@ async function findNextPageUrl(page: Page): Promise<string | null> {
 
 async function extractDetail(page: Page): Promise<CardTraderDetailRaw> {
   return page.evaluate(({ nameSelectors, imageSelectors, offerSelectors }) => {
-    const getFirstText = (selectors: readonly string[]): string | null => {
-      for (const selector of selectors) {
-        const element = document.querySelector<HTMLElement>(selector);
-        const text = element?.textContent?.replace(/\s+/g, " ").trim();
-        if (text) {
-          return text;
-        }
-      }
-
-      return null;
-    };
-
-    const getFirstImage = (selectors: readonly string[]): string | null => {
-      for (const selector of selectors) {
-        const element = document.querySelector<HTMLImageElement>(selector);
-        if (element?.src) {
-          return element.src;
-        }
-      }
-
-      return null;
-    };
-
     const pricePattern = /(R\$|\$|€)\s*[\d.,]+/i;
     const languagePattern =
       /\b(portugues|portuguese|pt|ingles|english|en|japanese|jp|spanish|es|italian|it|french|fr|german|de)\b/i;
@@ -171,15 +148,34 @@ async function extractDetail(page: Page): Promise<CardTraderDetailRaw> {
     }
 
     const bodyText = document.body.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    let name: string | null = null;
+    let imageUrl: string | null = null;
+
+    for (const selector of nameSelectors) {
+      const element = document.querySelector<HTMLElement>(selector);
+      const text = element?.textContent?.replace(/\s+/g, " ").trim();
+      if (text) {
+        name = text;
+        break;
+      }
+    }
+
+    for (const selector of imageSelectors) {
+      const element = document.querySelector<HTMLImageElement>(selector);
+      if (element?.src) {
+        imageUrl = element.src;
+        break;
+      }
+    }
 
     return {
-      name: getFirstText(nameSelectors),
+      name,
       setName: bodyText.match(/(Scarlet.*?|Sword.*?|Sun.*?|XY.*?|Black.*?|Promo.*?)($|\s{2,})/i)?.[1] ?? null,
       setCode: bodyText.match(/\b[A-Z]{2,5}\d{0,3}\b/)?.[0] ?? null,
       year: Number(bodyText.match(/\b(19|20)\d{2}\b/)?.[0] ?? 0) || null,
       number: bodyText.match(/(?:No\.?|Card Number|#)\s*([A-Z0-9/-]+)/i)?.[1] ?? null,
       rarity: bodyText.match(/\b(Common|Uncommon|Rare|Ultra Rare|Secret Rare|Promo)\b/i)?.[0] ?? null,
-      imageUrl: getFirstImage(imageSelectors),
+      imageUrl,
       offers: Array.from(uniqueOffers.values()) as CardTraderDetailRaw["offers"],
       raw: {
         pageTitle: document.title,
@@ -321,4 +317,3 @@ export async function scrapeCardTrader(): Promise<SourceScrapeResult> {
     await browser.close().catch(() => undefined);
   }
 }
-

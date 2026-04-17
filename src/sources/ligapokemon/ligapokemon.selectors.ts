@@ -1,5 +1,7 @@
 export const ligaPokemonSelectors = {
   listingCardLinks: [
+    "a[href*='view=cards/card']",
+    "a[href*='cards/card']",
     "a[href*='view=cards/info']",
     "a[href*='view=cards%2Finfo']",
     "a[href*='cards/info']",
@@ -14,6 +16,7 @@ export const ligaPokemonSelectors = {
   detailName: ["h1", ".tituloPagina", ".title", ".nomeCarta", ".card-title"],
   detailImage: [".main-image img", ".card-image img", "img[src*='cards']", "img"],
   offerRows: [
+    ".store",
     "table tr",
     ".seller-card",
     ".seller-row",
@@ -25,4 +28,3 @@ export const ligaPokemonSelectors = {
     ".tab-content tr"
   ]
 } as const;
-
