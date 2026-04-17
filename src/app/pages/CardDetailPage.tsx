@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { apiClient, type CardDetailResponse, type OfferItem, type OffersResponse } from "../api/client";
+import { apiClient, formatBrl, type CardDetailResponse, type OfferItem, type OffersResponse } from "../api/client";
 import { FiltersBar } from "../components/FiltersBar";
 import { OfferTable } from "../components/OfferTable";
 import { SourceBadge } from "../components/SourceBadge";
@@ -12,7 +12,8 @@ const defaultFilters = {
   minPrice: "",
   maxPrice: "",
   collection: "",
-  year: ""
+  year: "",
+  search: ""
 };
 
 export function CardDetailPage() {
@@ -25,18 +26,16 @@ export function CardDetailPage() {
 
   async function loadData(currentFilters = filters) {
     if (!Number.isFinite(cardId)) {
-      setError("Card invalido.");
+      setError("Card inválido.");
       return;
     }
 
     try {
       setError(null);
       const search = new URLSearchParams();
-      Object.entries(currentFilters).forEach(([key, value]) => {
-        if (value) {
-          search.set(key, value);
-        }
-      });
+      for (const [key, value] of Object.entries(currentFilters)) {
+        if (value) search.set(key, value);
+      }
       search.set("limit", "200");
 
       const [cardResponse, offerResponse] = await Promise.all([
@@ -46,92 +45,103 @@ export function CardDetailPage() {
 
       setCard(cardResponse);
       setOffers(offerResponse);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Falha ao carregar detalhe do card.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao carregar detalhe do card.");
     }
   }
 
-  useEffect(() => {
-    void loadData(defaultFilters);
-  }, [cardId]);
+  useEffect(() => { void loadData(defaultFilters); }, [cardId]);
 
   const offersBySource = useMemo(() => {
     const grouped = new Map<string, OfferItem[]>();
-
     for (const offer of offers?.items ?? []) {
       const bucket = grouped.get(offer.source) ?? [];
       bucket.push(offer);
       grouped.set(offer.source, bucket);
     }
-
     return Array.from(grouped.entries());
   }, [offers]);
 
+  const minBrl = card?.minPriceCents != null ? formatBrl(card.minPriceCents) : null;
+
   return (
     <section className="stack">
-      <Link to="/cards" className="secondary-button back-link">
-        Voltar para cards
-      </Link>
+      <div className="topbar">
+        <Link to="/cards" className="btn btn-ghost btn-sm" style={{ marginBottom: "0.75rem" }}>
+          ← Voltar
+        </Link>
+        <h2 className="topbar-title">{card?.name ?? "Carregando..."}</h2>
+      </div>
 
-      {error ? <div className="notice notice-error">{error}</div> : null}
+      <div className="page-content">
+        <div className="stack">
+          {error && <div className="notice notice-error">{error}</div>}
 
-      {!card ? (
-        <div className="notice">Carregando card...</div>
-      ) : (
-        <>
-          <div className="detail-hero">
-            <div className="detail-image-shell">
-              {card.imageUrl ? <img src={card.imageUrl} alt={card.name} /> : <div className="image-fallback">R</div>}
-            </div>
-            <div className="detail-copy">
-              <p className="eyebrow">Detalhe do card</p>
-              <h3 className="detail-title">{card.name}</h3>
-              <p className="muted detail-subtitle">
-                {card.setName ?? "Colecao nao identificada"} | {card.year ?? "Ano n/d"} {card.number ? `| #${card.number}` : ""}
-              </p>
-              <div className="badge-row">
-                {card.sources.map((source) => (
-                  <SourceBadge key={source} source={source} />
-                ))}
-              </div>
-              <div className="detail-stats">
-                <span>{offers?.pagination.total ?? 0} ofertas listadas</span>
-                <strong>
-                  {card.minPriceCents !== null ? `${(card.minPriceCents / 100).toFixed(2)} ${card.currency ?? ""}` : "Sem preco"}
-                </strong>
-              </div>
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">Filtros</p>
-                <h3>Refinar ofertas deste card</h3>
-              </div>
-            </div>
-            <FiltersBar
-              values={filters}
-              onChange={setFilters}
-              onApply={() => {
-                void loadData(filters);
-              }}
-            />
-          </div>
-
-          {offersBySource.length === 0 ? (
-            <div className="notice">Nenhuma oferta encontrada para este card.</div>
+          {!card ? (
+            <div className="notice">Carregando card...</div>
           ) : (
-            offersBySource.map(([source, groupedOffers]) => (
-              <OfferTable
-                key={source}
-                title={source === "LIGA_POKEMON" ? "Liga Pokemon" : "CardTrader"}
-                offers={groupedOffers}
-              />
-            ))
+            <>
+              <div className="detail-hero">
+                <div className="detail-image-shell">
+                  {card.imageUrl
+                    ? <img src={card.imageUrl} alt={card.name} />
+                    : <div className="image-fallback" style={{ height: "100%" }}>R</div>}
+                </div>
+                <div className="detail-copy">
+                  <p className="eyebrow">Detalhe do card</p>
+                  <h3 className="detail-title">{card.name}</h3>
+                  <p className="detail-subtitle">
+                    {card.setName ?? "Coleção não identificada"}
+                    {card.year ? ` · ${card.year}` : ""}
+                    {card.number ? ` · #${card.number}` : ""}
+                  </p>
+                  <div className="badge-row">
+                    {card.sources.map((source) => (
+                      <SourceBadge key={source} source={source} />
+                    ))}
+                  </div>
+                  <div className="detail-stats">
+                    <span className="muted">{offers?.pagination.total ?? 0} ofertas encontradas</span>
+                    {minBrl && (
+                      <div>
+                        <span className="muted" style={{ fontSize: "0.75rem", marginRight: "0.3rem" }}>A partir de</span>
+                        <strong className="price-brl" style={{ fontSize: "1.1rem" }}>{minBrl}</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="panel">
+                <div className="panel-header">
+                  <div className="panel-title">Filtrar ofertas</div>
+                </div>
+                <FiltersBar
+                  values={filters}
+                  onChange={setFilters}
+                  onApply={() => { void loadData(filters); }}
+                  onClear={() => {
+                    setFilters(defaultFilters);
+                    void loadData(defaultFilters);
+                  }}
+                />
+              </div>
+
+              {offersBySource.length === 0 ? (
+                <div className="notice">Nenhuma oferta encontrada para este card com os filtros atuais.</div>
+              ) : (
+                offersBySource.map(([source, groupedOffers]) => (
+                  <OfferTable
+                    key={source}
+                    title={source === "LIGA_POKEMON" ? "Liga Pokémon" : "CardTrader"}
+                    offers={groupedOffers}
+                  />
+                ))
+              )}
+            </>
           )}
-        </>
-      )}
+        </div>
+      </div>
     </section>
   );
 }

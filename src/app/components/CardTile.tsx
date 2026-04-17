@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import type { CardItem } from "../api/client";
+import { formatBrl, type CardItem } from "../api/client";
 import { SourceBadge } from "./SourceBadge";
 
 type CardTileProps = {
@@ -7,29 +7,28 @@ type CardTileProps = {
 };
 
 export function CardTile({ card }: CardTileProps) {
+  const priceDisplay = card.minPriceCents != null ? formatBrl(card.minPriceCents) : null;
+
   return (
     <Link to={`/cards/${card.id}`} className="card-tile">
-      <div className="card-media">
-        {card.imageUrl ? <img src={card.imageUrl} alt={card.name} /> : <div className="image-fallback">R</div>}
-      </div>
-      <div className="card-body">
-        <div>
-          <p className="eyebrow card-eyebrow">{card.setName ?? "Colecao nao identificada"}</p>
-          <h3 className="card-title">{card.name}</h3>
-          <p className="muted card-subtitle">
-            {card.year ?? "Ano n/d"} {card.number ? `| #${card.number}` : ""}
-          </p>
-        </div>
-        <div className="badge-row">
+      {card.imageUrl
+        ? <img className="card-tile-img" src={card.imageUrl} alt={card.name} />
+        : <div className="card-tile-img-fallback">R</div>}
+      <div className="card-tile-body">
+        <p className="card-tile-set">{card.setName ?? "Coleção n/d"}</p>
+        <p className="card-tile-name">{card.name}</p>
+        <p className="card-tile-meta">
+          {card.year ?? "—"}
+          {card.number ? ` · #${card.number}` : ""}
+        </p>
+        <div className="badge-row" style={{ marginTop: "0.25rem" }}>
           {card.sources.map((source) => (
             <SourceBadge key={source} source={source} />
           ))}
         </div>
-        <div className="card-metrics">
-          <span>{card.activeOfferCount} ofertas ativas</span>
-          <strong>
-            {card.minPriceCents !== null ? `${(card.minPriceCents / 100).toFixed(2)} ${card.currency ?? ""}` : "Sem preco"}
-          </strong>
+        <div className="card-tile-footer">
+          <span className="card-tile-count">{card.activeOfferCount} oferta{card.activeOfferCount !== 1 ? "s" : ""}</span>
+          {priceDisplay && <span className="card-tile-price">{priceDisplay}</span>}
         </div>
       </div>
     </Link>

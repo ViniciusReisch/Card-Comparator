@@ -8,65 +8,85 @@ export function CardsPage() {
   const [query, setQuery] = useState("");
   const [collection, setCollection] = useState("");
   const [source, setSource] = useState("");
+  const [loading, setLoading] = useState(true);
 
   async function loadCards() {
     try {
+      setLoading(true);
       setError(null);
       const params = new URLSearchParams();
-      if (query) {
-        params.set("query", query);
-      }
-      if (collection) {
-        params.set("collection", collection);
-      }
-      if (source) {
-        params.set("source", source);
-      }
-      params.set("limit", "60");
-
+      if (query) params.set("query", query);
+      if (collection) params.set("collection", collection);
+      if (source) params.set("source", source);
+      params.set("limit", "80");
       const response = await apiClient.getCards(params);
       setData(response);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Falha ao carregar cards.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao carregar cards.");
+    } finally {
+      setLoading(false);
     }
   }
 
-  useEffect(() => {
-    void loadCards();
-  }, []);
+  useEffect(() => { void loadCards(); }, []);
 
   return (
     <section className="stack">
-      <div className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Cards monitorados</p>
-            <h3>Todos os Rayquazas encontrados nas fontes configuradas</h3>
-          </div>
-        </div>
-
-        <div className="filters-inline">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nome" />
-          <input
-            value={collection}
-            onChange={(event) => setCollection(event.target.value)}
-            placeholder="Filtrar colecao"
-          />
-          <select value={source} onChange={(event) => setSource(event.target.value)}>
-            <option value="">Todas as fontes</option>
-            <option value="LIGA_POKEMON">Liga Pokemon</option>
-            <option value="CARDTRADER">CardTrader</option>
-          </select>
-          <button className="secondary-button" onClick={() => void loadCards()}>
-            Aplicar filtros
-          </button>
-        </div>
-
-        {error ? <div className="notice notice-error">{error}</div> : null}
+      <div className="topbar">
+        <h2 className="topbar-title">Cards Monitorados</h2>
+        <p className="topbar-sub">
+          {data ? `${data.pagination.total} cards encontrados` : "Todos os Rayquazas coletados"}
+        </p>
       </div>
 
-      {data ? <CardGrid cards={data.items} /> : <div className="notice">Carregando cards...</div>}
+      <div className="page-content">
+        <div className="stack">
+          <div className="panel">
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: "0.5rem" }}>
+              <div className="filter-group">
+                <label className="filter-label">Buscar por nome</label>
+                <input
+                  className="filter-input"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Rayquaza..."
+                  onKeyDown={(e) => { if (e.key === "Enter") void loadCards(); }}
+                />
+              </div>
+              <div className="filter-group">
+                <label className="filter-label">Coleção</label>
+                <input
+                  className="filter-input"
+                  value={collection}
+                  onChange={(e) => setCollection(e.target.value)}
+                  placeholder="Base Set..."
+                />
+              </div>
+              <div className="filter-group">
+                <label className="filter-label">Fonte</label>
+                <select className="filter-select" value={source} onChange={(e) => setSource(e.target.value)}>
+                  <option value="">Todas</option>
+                  <option value="LIGA_POKEMON">Liga Pokémon</option>
+                  <option value="CARDTRADER">CardTrader</option>
+                </select>
+              </div>
+              <div className="filter-group" style={{ justifyContent: "flex-end", flexDirection: "row", alignItems: "flex-end" }}>
+                <button className="btn btn-primary btn-sm" onClick={() => void loadCards()}>
+                  Buscar
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {error && <div className="notice notice-error">{error}</div>}
+
+          {loading ? (
+            <div className="notice">Carregando cards...</div>
+          ) : (
+            <CardGrid cards={data?.items ?? []} />
+          )}
+        </div>
+      </div>
     </section>
   );
 }
-

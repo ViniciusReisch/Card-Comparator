@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { Link } from "react-router-dom";
-import type { OfferItem } from "../api/client";
+import { formatBrl, formatOriginalPrice, type OfferItem } from "../api/client";
 import { ConditionBadge } from "./ConditionBadge";
 import { LanguageBadge } from "./LanguageBadge";
 import { NewOfferBadge } from "./NewOfferBadge";
@@ -11,10 +11,15 @@ type OfferCardProps = {
 };
 
 export function OfferCard({ offer }: OfferCardProps) {
+  const brl = formatBrl(offer.priceBrlCents ?? (offer.currency === "BRL" ? offer.priceCents : null));
+  const orig = formatOriginalPrice(offer.priceCents, offer.currency);
+
   return (
     <article className={`offer-card${offer.isNew ? " is-highlighted" : ""}`}>
       <div className="offer-image-shell">
-        {offer.imageUrl ? <img className="offer-image" src={offer.imageUrl} alt={offer.cardName} /> : <div className="image-fallback">R</div>}
+        {offer.imageUrl
+          ? <img className="offer-image" src={offer.imageUrl} alt={offer.cardName} />
+          : <div className="image-fallback">R</div>}
       </div>
 
       <div className="offer-card-body">
@@ -22,44 +27,41 @@ export function OfferCard({ offer }: OfferCardProps) {
           <SourceBadge source={offer.source} />
           <LanguageBadge value={offer.languageNormalized} />
           <ConditionBadge value={offer.conditionNormalized} />
-          {offer.isNew ? <NewOfferBadge /> : null}
+          {offer.isNew && <NewOfferBadge />}
         </div>
 
         <div>
-          <h3 className="offer-title">{offer.cardName}</h3>
-          <p className="muted offer-subtitle">
-            {offer.setName ?? "Colecao nao identificada"} | {offer.year ?? "Ano n/d"}
+          <p style={{ fontWeight: 700, fontSize: "0.9rem" }}>{offer.cardName}</p>
+          <p className="muted" style={{ fontSize: "0.8rem" }}>
+            {offer.setName ?? "Coleção n/d"}{offer.year ? ` · ${offer.year}` : ""}
           </p>
         </div>
 
         <div className="offer-meta-grid">
           <div>
-            <span className="muted">Preco</span>
-            <strong>{(offer.priceCents / 100).toFixed(2)} {offer.currency}</strong>
+            <span className="muted">Preço</span>
+            <strong className="price-brl">{brl}</strong>
+            {orig && <span className="price-original">{orig}</span>}
           </div>
           <div>
-            <span className="muted">Loja / vendedor</span>
-            <strong>{offer.storeName ?? offer.sellerName ?? "Nao informado"}</strong>
+            <span className="muted">Vendedor / Loja</span>
+            <strong style={{ fontSize: "0.85rem" }}>{offer.storeName ?? offer.sellerName ?? "—"}</strong>
           </div>
           <div>
-            <span className="muted">Pais</span>
-            <strong>{offer.sellerCountry ?? "Nao informado"}</strong>
-          </div>
-          <div>
-            <span className="muted">Primeira aparicao</span>
-            <strong>{format(new Date(offer.firstSeenAt), "dd/MM/yyyy HH:mm")}</strong>
+            <span className="muted">Primeira aparição</span>
+            <strong style={{ fontSize: "0.82rem" }}>{format(new Date(offer.firstSeenAt), "dd/MM/yyyy HH:mm")}</strong>
           </div>
         </div>
 
         <div className="offer-actions">
-          <Link className="secondary-button" to={`/cards/${offer.cardId}`}>
+          <Link className="btn btn-secondary btn-sm" to={`/cards/${offer.cardId}`}>
             Ver card
           </Link>
-          {offer.offerUrl ? (
-            <a className="primary-button" href={offer.offerUrl} target="_blank" rel="noreferrer">
-              Abrir anuncio original
+          {offer.offerUrl && (
+            <a className="btn btn-primary btn-sm" href={offer.offerUrl} target="_blank" rel="noreferrer">
+              Abrir anúncio ↗
             </a>
-          ) : null}
+          )}
         </div>
       </div>
     </article>
