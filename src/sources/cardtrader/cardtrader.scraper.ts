@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { chromium, type Page } from "playwright";
+import { chromium, type APIRequestContext, type Page } from "playwright";
 import { env } from "../../config/env";
 import { monitorConfig } from "../../config/monitor.config";
 import type { SourceScrapeResult } from "../../domain/card.types";
@@ -10,7 +10,16 @@ import {
   type CardTraderDetailRaw,
   type CardTraderListingRaw
 } from "./cardtrader.mapper";
-import { cardTraderSelectors } from "./cardtrader.selectors";
+
+type CardTraderBlueprintPoolItem = {
+  rid: number | string;
+  id: string;
+  n: string;
+  x?: string;
+  lx?: string;
+  xx?: string;
+  cn?: number | string | null;
+};
 
 function extractCardIdFromUrl(value: string | null): string | null {
   if (!value) {
@@ -21,171 +30,243 @@ function extractCardIdFromUrl(value: string | null): string | null {
   return match?.[1] ?? null;
 }
 
-async function extractListingCards(page: Page): Promise<CardTraderListingRaw[]> {
-  return page.evaluate(({ linkSelectors }) => {
-    const links = new Map<string, HTMLAnchorElement>();
+function decodeBlueprintIds(searchUrl: string): Set<number> {
+  try {
+    const url = new URL(searchUrl);
+    const encodedIds = url.searchParams.get("ids");
 
-    for (const selector of linkSelectors) {
-      const anchors = Array.from(document.querySelectorAll<HTMLAnchorElement>(selector));
-      for (const anchor of anchors) {
-        if (!anchor.href || links.has(anchor.href)) {
-          continue;
-        }
-
-        const text = anchor.textContent?.replace(/\s+/g, " ").trim() ?? "";
-        const imageAlt = anchor.querySelector<HTMLImageElement>("img")?.alt ?? "";
-
-        if (!/rayquaza/i.test(`${text} ${imageAlt}`) && !/rayquaza/i.test(anchor.href)) {
-          continue;
-        }
-
-        links.set(anchor.href, anchor);
-      }
+    if (!encodedIds) {
+      return new Set();
     }
 
-    return Array.from(links.values()).map((anchor) => {
-      const container =
-        anchor.closest("article, li, tr, .card, .product, .row, .col") ??
-        anchor.parentElement ??
-        anchor;
-      const image = container.querySelector<HTMLImageElement>("img") ?? anchor.querySelector<HTMLImageElement>("img");
-      const texts = Array.from(container.querySelectorAll("h1,h2,h3,h4,span,small,strong,p,div"))
-        .map((element) => element.textContent?.replace(/\s+/g, " ").trim() ?? "")
-        .filter(Boolean)
-        .slice(0, 30);
-
-      return {
-        sourceCardId: null,
-        name: texts.find((value) => /rayquaza/i.test(value)) ?? image?.alt ?? anchor.textContent?.trim() ?? null,
-        setName: texts.find((value) => !/rayquaza/i.test(value) && !/\b(19|20)\d{2}\b/.test(value)) ?? null,
-        setCode: null,
-        year: Number(texts.find((value) => /\b(19|20)\d{2}\b/.test(value))?.match(/\b(19|20)\d{2}\b/)?.[0] ?? 0) || null,
-        number: texts.find((value) => /#?\d{1,4}[A-Z]?/i.test(value)) ?? null,
-        rarity: texts.find((value) => /rare|secret|promo|holo/i.test(value)) ?? null,
-        imageUrl: image?.src ?? null,
-        detailUrl: anchor.href,
-        raw: {
-          texts
-        }
-      };
-    });
-  }, { linkSelectors: cardTraderSelectors.listingCardLinks });
+    return new Set(
+      Buffer.from(encodedIds, "base64")
+        .toString("utf8")
+        .split(",")
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value))
+    );
+  } catch {
+    return new Set();
+  }
 }
 
-async function findNextPageUrl(page: Page): Promise<string | null> {
-  for (const selector of cardTraderSelectors.nextPage) {
-    const href = await page.locator(selector).first().getAttribute("href").catch(() => null);
-    if (href) {
-      return new URL(href, page.url()).toString();
-    }
+function getSearchQuery(searchUrl: string): string | null {
+  try {
+    const url = new URL(searchUrl);
+    return url.searchParams.get("q")?.trim().toLowerCase() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchListingCards(
+  request: APIRequestContext,
+  searchUrl: string
+): Promise<CardTraderListingRaw[]> {
+  const ids = decodeBlueprintIds(searchUrl);
+  const query = getSearchQuery(searchUrl);
+  const response = await request.get("https://www.cardtrader.com/en/manasearch/5/blueprints.json");
+
+  if (!response.ok()) {
+    throw new Error(`CardTrader blueprint pool request failed with status ${response.status()}`);
   }
 
-  const nextByText = await page.getByRole("link", { name: /next/i }).first().getAttribute("href").catch(() => null);
-  return nextByText ? new URL(nextByText, page.url()).toString() : null;
+  const pool = (await response.json()) as CardTraderBlueprintPoolItem[];
+  const cards: CardTraderListingRaw[] = [];
+  const seenUrls = new Set<string>();
+
+  for (const entry of pool) {
+    const rid = Number(entry.rid);
+    const haystack = `${entry.n ?? ""} ${entry.x ?? ""} ${entry.lx ?? ""} ${entry.id ?? ""}`.toLowerCase();
+
+    if (ids.size > 0 && !ids.has(rid)) {
+      continue;
+    }
+
+    if (query && !haystack.includes(query)) {
+      continue;
+    }
+
+    if (!entry.id) {
+      continue;
+    }
+
+    const detailUrl = `https://www.cardtrader.com/en/cards/${entry.id}`;
+    if (seenUrls.has(detailUrl)) {
+      continue;
+    }
+
+    seenUrls.add(detailUrl);
+    cards.push({
+      sourceCardId: Number.isFinite(rid) ? String(rid) : extractCardIdFromUrl(detailUrl),
+      name: entry.n ?? null,
+      setName: entry.lx ?? entry.x ?? null,
+      setCode: entry.xx ?? null,
+      year: null,
+      number:
+        typeof entry.cn === "number"
+          ? String(entry.cn)
+          : typeof entry.cn === "string"
+            ? entry.cn
+            : null,
+      rarity: null,
+      imageUrl: null,
+      detailUrl,
+      raw: {
+        blueprintPool: entry
+      }
+    });
+  }
+
+  return cards;
 }
 
 async function extractDetail(page: Page): Promise<CardTraderDetailRaw> {
-  return page.evaluate(({ nameSelectors, imageSelectors, offerSelectors }) => {
-    const pricePattern = /(R\$|\$|€)\s*[\d.,]+/i;
-    const languagePattern =
-      /\b(portugues|portuguese|pt|ingles|english|en|japanese|jp|spanish|es|italian|it|french|fr|german|de)\b/i;
-    const conditionPattern =
-      /\b(mint|near mint|slightly played|moderately played|played|heavily played|poor)\b/i;
-    const countryPattern = /\b(italy|italia|spain|espana|germany|deutschland|france|brazil|brasil|portugal|japan|usa|united states|canada)\b/i;
-    const uniqueOffers = new Map<string, Record<string, unknown>>();
+  return page.evaluate(() => {
+    const appRoot = document.querySelector<HTMLElement>("[data-react-class='ProductsIndexApp']");
+    const propsText = appRoot?.getAttribute("data-react-props");
+    let props: Record<string, unknown> | null = null;
 
-    for (const selector of offerSelectors) {
-      const rows = Array.from(document.querySelectorAll<HTMLElement>(selector));
-      for (const row of rows) {
-        const text = row.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    if (propsText) {
+      try {
+        props = JSON.parse(propsText) as Record<string, unknown>;
+      } catch {
+        props = null;
+      }
+    }
 
-        if (!pricePattern.test(text)) {
-          continue;
-        }
+    const blueprint =
+      props && typeof props.blueprint === "object" && props.blueprint !== null
+        ? (props.blueprint as Record<string, unknown>)
+        : null;
+    const expansion =
+      blueprint && typeof blueprint.expansion === "object" && blueprint.expansion !== null
+        ? (blueprint.expansion as Record<string, unknown>)
+        : null;
+    const properties =
+      blueprint && typeof blueprint.properties_hash === "object" && blueprint.properties_hash !== null
+        ? (blueprint.properties_hash as Record<string, unknown>)
+        : null;
 
-        const links = Array.from(row.querySelectorAll<HTMLAnchorElement>("a[href]"));
-        const images = Array.from(row.querySelectorAll<HTMLImageElement>("img[src]"));
-        const chunks = Array.from(row.querySelectorAll("td,th,span,strong,small,p,div,a"))
-          .map((element) => element.textContent?.replace(/\s+/g, " ").trim() ?? "")
-          .filter(Boolean)
-          .slice(0, 25);
+    let imageCandidate: string | null = null;
+    if (blueprint && typeof blueprint.image_url === "string") {
+      imageCandidate = blueprint.image_url;
+    } else if (blueprint && typeof blueprint.image === "object" && blueprint.image !== null) {
+      const image = blueprint.image as Record<string, unknown>;
 
-        const priceText = text.match(pricePattern)?.[0] ?? null;
-        const languageText = chunks.find((chunk) => languagePattern.test(chunk)) ?? text.match(languagePattern)?.[0] ?? null;
-        const conditionText = chunks.find((chunk) => conditionPattern.test(chunk)) ?? text.match(conditionPattern)?.[0] ?? null;
-        const countryText = chunks.find((chunk) => countryPattern.test(chunk)) ?? text.match(countryPattern)?.[0] ?? null;
-        const quantityChunk = chunks.find((chunk) => /\b(qty|quantity|available|stock)\b/i.test(chunk)) ?? null;
-        const quantity = quantityChunk?.match(/\d+/)?.[0] ?? text.match(/\b(?:qty|quantity|available|stock)[:\s]*(\d+)/i)?.[1] ?? null;
-        const sellerText =
-          links.find((link) => link.textContent?.trim() && !pricePattern.test(link.textContent))?.textContent?.trim() ??
-          chunks.find((chunk) => !pricePattern.test(chunk) && chunk !== languageText && chunk !== conditionText && chunk !== countryText) ??
-          null;
-        const storeText = row.querySelector<HTMLElement>("strong,b,h3,h4")?.textContent?.replace(/\s+/g, " ").trim() ?? sellerText;
-        const offerUrl = links[0]?.href ?? null;
-        const imageUrl = images[0]?.src ?? null;
-        const sourceOfferId = offerUrl?.match(/\/offers\/(\d+)/i)?.[1] ?? offerUrl?.match(/\/(\d+)(?:[/?#]|$)/)?.[1] ?? null;
-        const key = [offerUrl ?? "", sellerText ?? "", priceText ?? "", conditionText ?? "", languageText ?? ""].join("|");
-
-        if (!uniqueOffers.has(key)) {
-          uniqueOffers.set(key, {
-            sourceOfferId,
-            priceText,
-            languageText,
-            conditionText,
-            sellerText,
-            sellerCountry: countryText,
-            storeText,
-            offerUrl,
-            imageUrl,
-            quantity: quantity ? Number(quantity) : null,
-            raw: {
-              text,
-              chunks
-            }
-          });
+      if (typeof image.url === "string") {
+        imageCandidate = image.url;
+      } else if (typeof image.show === "object" && image.show !== null) {
+        const showImage = image.show as Record<string, unknown>;
+        if (typeof showImage.url === "string") {
+          imageCandidate = showImage.url;
         }
       }
     }
 
-    const bodyText = document.body.textContent?.replace(/\s+/g, " ").trim() ?? "";
-    let name: string | null = null;
     let imageUrl: string | null = null;
-
-    for (const selector of nameSelectors) {
-      const element = document.querySelector<HTMLElement>(selector);
-      const text = element?.textContent?.replace(/\s+/g, " ").trim();
-      if (text) {
-        name = text;
-        break;
+    if (imageCandidate) {
+      if (imageCandidate.startsWith("//")) {
+        imageUrl = `${location.protocol}${imageCandidate}`;
+      } else if (/^https?:\/\//i.test(imageCandidate)) {
+        imageUrl = imageCandidate;
+      } else {
+        imageUrl = new URL(imageCandidate, location.origin).toString();
       }
     }
 
-    for (const selector of imageSelectors) {
-      const element = document.querySelector<HTMLImageElement>(selector);
-      if (element?.src) {
-        imageUrl = element.src;
-        break;
-      }
-    }
+    const offers = Array.from(document.querySelectorAll<HTMLTableRowElement>("tr[data-product-id]")).map((row) => {
+      const sellerAnchor = row.querySelector<HTMLAnchorElement>("td.products-table__seller a[href]");
+      const sellerDesktop =
+        sellerAnchor?.querySelector<HTMLElement>(".d-none.d-sm-inline-block")?.textContent?.replace(/\s+/g, " ").trim() ??
+        "";
+      const sellerMobile =
+        sellerAnchor?.querySelector<HTMLElement>(".d-sm-none")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+      const sellerFallback = sellerAnchor?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+      const sellerText = sellerDesktop || sellerMobile || sellerFallback || null;
+      const conditionElement = row.querySelector<HTMLElement>(
+        ".products-table__info--condition [data-original-title], .products-table__info--condition .badge"
+      );
+      const languageElement = row.querySelector<HTMLElement>(
+        ".products-table__info--language [data-original-title], .products-table__info--language .flag-icon"
+      );
+      const countryElement = row.querySelector<HTMLElement>("td.products-table__seller .flag-icon[data-original-title]");
+      const descriptionElement = row.querySelector<HTMLElement>(".products-table__description small");
+      const priceElement = row.querySelector<HTMLElement>(".products-table__formatted-price");
+      const quantityElement = row.querySelector<HTMLElement>(".input-group-text.products-table__quantity-form");
+      const sourceOfferId = row.getAttribute("data-product-id");
+      const rowId = row.id || (sourceOfferId ? `product-row-products-${sourceOfferId}` : "");
+      const quantityText = quantityElement?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+      const quantityMatch = quantityText.match(/of\s*(\d+)/i);
+      const fallbackQuantity = row.querySelectorAll(".products-table__quantity-form option").length;
+      const quantity = quantityMatch
+        ? Number(quantityMatch[1])
+        : fallbackQuantity > 0
+          ? fallbackQuantity
+          : null;
+      const rowLink =
+        rowId.length > 0
+          ? `${location.origin}${location.pathname}${location.search}#${rowId}`
+          : sellerAnchor?.href ?? location.href;
+
+      return {
+        sourceOfferId,
+        priceText: priceElement?.textContent?.replace(/\s+/g, " ").trim() ?? null,
+        languageText:
+          languageElement?.getAttribute("data-original-title") ??
+          languageElement?.textContent?.replace(/\s+/g, " ").trim() ??
+          null,
+        conditionText:
+          conditionElement?.getAttribute("data-original-title") ??
+          conditionElement?.textContent?.replace(/\s+/g, " ").trim() ??
+          null,
+        sellerText,
+        sellerCountry: countryElement?.getAttribute("data-original-title") ?? null,
+        storeText: sellerText,
+        offerUrl: rowLink,
+        imageUrl,
+        quantity,
+        raw: {
+          rowId,
+          descriptionText:
+            descriptionElement?.getAttribute("title") ??
+            descriptionElement?.textContent?.replace(/\s+/g, " ").trim() ??
+            null,
+          gtmPrice: row.getAttribute("gtm-price"),
+          gtmCurrency: row.getAttribute("gtm-currency")
+        }
+      };
+    });
+
+    const releasedAt = typeof expansion?.released_at === "string" ? expansion.released_at : null;
+    const yearMatch = releasedAt?.match(/\b(19|20)\d{2}\b/);
 
     return {
-      name,
-      setName: bodyText.match(/(Scarlet.*?|Sword.*?|Sun.*?|XY.*?|Black.*?|Promo.*?)($|\s{2,})/i)?.[1] ?? null,
-      setCode: bodyText.match(/\b[A-Z]{2,5}\d{0,3}\b/)?.[0] ?? null,
-      year: Number(bodyText.match(/\b(19|20)\d{2}\b/)?.[0] ?? 0) || null,
-      number: bodyText.match(/(?:No\.?|Card Number|#)\s*([A-Z0-9/-]+)/i)?.[1] ?? null,
-      rarity: bodyText.match(/\b(Common|Uncommon|Rare|Ultra Rare|Secret Rare|Promo)\b/i)?.[0] ?? null,
+      name: typeof blueprint?.name === "string" ? blueprint.name : null,
+      setName:
+        typeof expansion?.translated_name === "string"
+          ? expansion.translated_name
+          : typeof expansion?.name === "string"
+            ? expansion.name
+            : null,
+      setCode: typeof expansion?.code === "string" ? expansion.code : null,
+      year: yearMatch ? Number(yearMatch[0]) : null,
+      number: typeof properties?.collector_number === "string" ? properties.collector_number : null,
+      rarity:
+        typeof blueprint?.version === "string"
+          ? blueprint.version
+          : typeof properties?.pokemon_rarity === "string"
+            ? properties.pokemon_rarity
+            : null,
       imageUrl,
-      offers: Array.from(uniqueOffers.values()) as CardTraderDetailRaw["offers"],
+      offers: offers as CardTraderDetailRaw["offers"],
       raw: {
         pageTitle: document.title,
-        bodyPreview: bodyText.slice(0, 2_000)
+        blueprintId: blueprint?.id ?? null,
+        rowCount: offers.length
       }
     };
-  }, {
-    nameSelectors: cardTraderSelectors.detailName,
-    imageSelectors: cardTraderSelectors.detailImage,
-    offerSelectors: cardTraderSelectors.offerRows
   });
 }
 
@@ -221,48 +302,14 @@ export async function scrapeCardTrader(): Promise<SourceScrapeResult> {
       timeout: 30_000
     });
     await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => undefined);
+    await page.waitForTimeout(env.REQUEST_DELAY_MS);
 
-    const listingsByUrl = new Map<string, CardTraderListingRaw>();
-    const visitedPageUrls = new Set<string>();
-    let currentPageIndex = 1;
-
-    while (currentPageIndex <= monitorConfig.sources.cardtrader.maxPages) {
-      const currentUrl = page.url();
-      if (visitedPageUrls.has(currentUrl)) {
-        break;
-      }
-
-      visitedPageUrls.add(currentUrl);
-      console.log(`[cardtrader] collecting list page ${currentPageIndex}`);
-
-      const pageListings = (await extractListingCards(page)).map((card) => ({
-        ...card,
-        sourceCardId: card.sourceCardId ?? extractCardIdFromUrl(card.detailUrl)
-      }));
-
-      for (const listing of pageListings) {
-        if (listing.detailUrl && !listingsByUrl.has(listing.detailUrl)) {
-          listingsByUrl.set(listing.detailUrl, listing);
-        }
-      }
-
-      const nextPageUrl = await findNextPageUrl(page);
-      if (!nextPageUrl || nextPageUrl === currentUrl) {
-        break;
-      }
-
-      await page.waitForTimeout(env.REQUEST_DELAY_MS);
-      await page.goto(nextPageUrl, {
-        waitUntil: "domcontentloaded",
-        timeout: 30_000
-      });
-      await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => undefined);
-      currentPageIndex += 1;
-    }
+    const listingCards = await fetchListingCards(page.context().request, monitorConfig.sources.cardtrader.searchUrl);
+    console.log(`[cardtrader] resolved ${listingCards.length} cards from blueprint pool`);
 
     const results = [];
 
-    for (const listing of listingsByUrl.values()) {
+    for (const listing of listingCards) {
       if (!listing.detailUrl) {
         continue;
       }
@@ -276,7 +323,8 @@ export async function scrapeCardTrader(): Promise<SourceScrapeResult> {
           waitUntil: "domcontentloaded",
           timeout: 30_000
         });
-        await detailPage.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => undefined);
+        await detailPage.waitForSelector("[data-react-class='ProductsIndexApp']", { timeout: 8_000 });
+        await detailPage.waitForSelector("tr[data-product-id]", { timeout: 8_000 }).catch(() => undefined);
         await detailPage.waitForTimeout(env.REQUEST_DELAY_MS);
 
         const detail = await extractDetail(detailPage);
@@ -294,7 +342,7 @@ export async function scrapeCardTrader(): Promise<SourceScrapeResult> {
     }
 
     if (results.length === 0) {
-      errors.push("[cardtrader] no cards were collected from the paginator");
+      errors.push("[cardtrader] no cards were collected from the search source");
     }
 
     return {

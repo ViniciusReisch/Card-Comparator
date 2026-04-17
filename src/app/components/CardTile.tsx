@@ -14,10 +14,10 @@ export function CardTile({ card }: CardTileProps) {
       </div>
       <div className="card-body">
         <div>
-          <p className="eyebrow">{card.setName ?? "Colecao nao identificada"}</p>
-          <h3>{card.name}</h3>
-          <p className="muted">
-            {card.year ?? "Ano n/d"} {card.number ? `• #${card.number}` : ""}
+          <p className="eyebrow card-eyebrow">{card.setName ?? "Colecao nao identificada"}</p>
+          <h3 className="card-title">{card.name}</h3>
+          <p className="muted card-subtitle">
+            {card.year ?? "Ano n/d"} {card.number ? `| #${card.number}` : ""}
           </p>
         </div>
         <div className="badge-row">
@@ -35,4 +35,3 @@ export function CardTile({ card }: CardTileProps) {
     </Link>
   );
 }
-

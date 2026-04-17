@@ -131,9 +131,9 @@ export function DashboardPage() {
                       <div className="badge-row">
                         <SourceBadge source={offer.source} />
                       </div>
-                      <h4>{offer.cardName}</h4>
-                      <p className="muted">
-                        {offer.setName ?? "Colecao nao identificada"} • {offer.storeName ?? offer.sellerName ?? "Loja nao informada"}
+                      <h4 className="list-title">{offer.cardName}</h4>
+                      <p className="muted list-subtitle">
+                        {offer.setName ?? "Colecao nao identificada"} | {offer.storeName ?? offer.sellerName ?? "Loja nao informada"}
                       </p>
                     </div>
                     <div className="list-row-right">

@@ -392,6 +392,44 @@ button {
   gap: 0.85rem;
 }
 
+.card-eyebrow,
+.card-title,
+.card-subtitle,
+.offer-title,
+.offer-subtitle,
+.detail-title,
+.detail-subtitle,
+.list-title,
+.list-subtitle,
+.data-table td,
+.data-table th {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.card-title,
+.offer-title,
+.list-title,
+.card-subtitle,
+.offer-subtitle,
+.list-subtitle {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+}
+
+.card-title,
+.offer-title,
+.list-title {
+  -webkit-line-clamp: 2;
+}
+
+.card-subtitle,
+.offer-subtitle,
+.list-subtitle {
+  -webkit-line-clamp: 3;
+}
+
 .card-metrics,
 .detail-stats {
   display: flex;

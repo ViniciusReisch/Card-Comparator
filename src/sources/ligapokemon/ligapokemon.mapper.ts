@@ -4,7 +4,11 @@ import { buildCanonicalCardKey, buildCanonicalOfferKey } from "../../normalizers
 import { normalizeCondition } from "../../normalizers/condition-normalizer";
 import { normalizeLanguage } from "../../normalizers/language-normalizer";
 import { normalizePrice } from "../../normalizers/price-normalizer";
-import { safeTrim } from "../../normalizers/text-normalizer";
+import {
+  safeTrim,
+  sanitizeImageUrl,
+  sanitizeScrapedLabel
+} from "../../normalizers/text-normalizer";
 
 export type LigaPokemonListingRaw = {
   sourceCardId: string | null;
@@ -75,7 +79,7 @@ function parseQuantity(value: number | string | null | undefined): number | null
 }
 
 function fallbackName(listing: LigaPokemonListingRaw, detail: LigaPokemonDetailRaw): string {
-  return safeTrim(detail.name) ?? safeTrim(listing.name) ?? "Rayquaza";
+  return sanitizeScrapedLabel(detail.name, 120) ?? sanitizeScrapedLabel(listing.name, 120) ?? "Rayquaza";
 }
 
 export function mapLigaPokemonCard(
@@ -86,12 +90,12 @@ export function mapLigaPokemonCard(
     source: "LIGA_POKEMON",
     sourceCardId: listing.sourceCardId ?? null,
     name: fallbackName(listing, detail),
-    setName: safeTrim(detail.setName) ?? safeTrim(listing.setName),
+    setName: sanitizeScrapedLabel(detail.setName, 140) ?? sanitizeScrapedLabel(listing.setName, 140),
     setCode: safeTrim(detail.setCode) ?? safeTrim(listing.setCode),
     year: parseYear(detail.year) ?? parseYear(listing.year),
     number: safeTrim(detail.number) ?? safeTrim(listing.number),
-    rarity: safeTrim(detail.rarity) ?? safeTrim(listing.rarity),
-    imageUrl: safeTrim(detail.imageUrl) ?? safeTrim(listing.imageUrl),
+    rarity: sanitizeScrapedLabel(detail.rarity, 80) ?? sanitizeScrapedLabel(listing.rarity, 80),
+    imageUrl: sanitizeImageUrl(detail.imageUrl) ?? sanitizeImageUrl(listing.imageUrl),
     detailUrl: safeTrim(listing.detailUrl),
     raw: {
       listing: listing.raw,
@@ -127,11 +131,11 @@ export function mapLigaPokemonOffer(card: ScrapedCardSeed, offer: LigaPokemonOff
     conditionNormalized,
     priceCents,
     currency,
-    imageUrl: safeTrim(offer.imageUrl) ?? card.imageUrl,
+    imageUrl: sanitizeImageUrl(offer.imageUrl) ?? card.imageUrl,
     offerUrl: safeTrim(offer.offerUrl) ?? card.detailUrl,
-    sellerName: safeTrim(offer.sellerText),
+    sellerName: sanitizeScrapedLabel(offer.sellerText, 120),
     sellerCountry: null,
-    storeName: safeTrim(offer.storeText) ?? safeTrim(offer.sellerText),
+    storeName: sanitizeScrapedLabel(offer.storeText, 120) ?? sanitizeScrapedLabel(offer.sellerText, 120),
     quantity: parseQuantity(offer.quantity),
     raw: offer.raw
   };
@@ -141,4 +145,3 @@ export function mapLigaPokemonOffer(card: ScrapedCardSeed, offer: LigaPokemonOff
     sourceOfferId: mapped.sourceOfferId ?? buildCanonicalOfferKey(mapped)
   };
 }
-

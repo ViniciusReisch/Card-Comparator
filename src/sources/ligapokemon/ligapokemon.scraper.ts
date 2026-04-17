@@ -17,6 +17,20 @@ function extractCardIdFromUrl(value: string | null): string | null {
     return null;
   }
 
+  try {
+    const url = new URL(value);
+    const card = url.searchParams.get("card");
+    const edition = url.searchParams.get("ed");
+    const number = url.searchParams.get("num");
+    const composite = [card, edition, number].filter((part) => part && part.length > 0).join("|");
+
+    if (composite.length > 0) {
+      return composite;
+    }
+  } catch {
+    // ignore malformed URL and fallback to regex heuristics below
+  }
+
   const fromQuery = value.match(/[?&](?:id|card|cardid)=([^&#]+)/i);
   if (fromQuery) {
     return decodeURIComponent(fromQuery[1] ?? "");
@@ -152,119 +166,167 @@ async function expandAllResults(page: Page): Promise<void> {
 }
 
 async function extractDetail(page: Page): Promise<LigaPokemonDetailRaw> {
-  return page.evaluate(({ nameSelectors, imageSelectors, offerSelectors }) => {
-    const pricePattern = /(R\$|\$|€)\s*[\d.,]+/i;
-    const languagePattern =
-      /\b(portugues|portuguese|pt|ingles|english|en|japones|japanese|jp|espanhol|spanish|italiano|italian|frances|french|alemao|german)\b/i;
-    const conditionPattern =
-      /\b(mint|near mint|excellent|slightly played|moderately played|played|heavily played|poor|damaged|novo|seminovo|usado|jogado|danificado)\b/i;
+  return page.evaluate(({ nameSelectors, imageSelectors }) => {
+    const scope = globalThis as Record<string, unknown>;
+    const cardsEditions = Array.isArray(scope.cards_editions) ? (scope.cards_editions as Array<Record<string, unknown>>) : [];
+    const cardsStock = Array.isArray(scope.cards_stock) ? (scope.cards_stock as Array<Record<string, unknown>>) : [];
+    const cardsStores =
+      typeof scope.cards_stores === "object" && scope.cards_stores !== null
+        ? (scope.cards_stores as Record<string, Record<string, unknown>>)
+        : {};
+    const languages = Array.isArray(scope.dataLanguage) ? (scope.dataLanguage as Array<Record<string, unknown>>) : [];
+    const qualities = Array.isArray(scope.dataQuality) ? (scope.dataQuality as Array<Record<string, unknown>>) : [];
+    const extras = Array.isArray(scope.dataExtras) ? (scope.dataExtras as Array<Record<string, unknown>>) : [];
+    const primaryEdition = cardsEditions[0] ?? null;
+    const cardFromUrl = new URL(location.href).searchParams.get("card");
+    const urlDerivedName = cardFromUrl?.replace(/\s*\([^)]*\)\s*$/, "").trim() ?? null;
+    const titleName = document.title.split("|")[0]?.split("/")[1]?.trim() ?? document.title.split("|")[0]?.trim() ?? null;
+    let name: string | null = urlDerivedName;
+    let imageUrl: string | null = null;
 
-    const uniqueOffers = new Map<string, Record<string, unknown>>();
-
-    for (const selector of offerSelectors) {
-      const rows = Array.from(document.querySelectorAll<HTMLElement>(selector));
-
-      for (const row of rows) {
-        const text = row.textContent?.replace(/\s+/g, " ").trim() ?? "";
-
-        if (!pricePattern.test(text)) {
-          continue;
-        }
-
-        const links = Array.from(row.querySelectorAll<HTMLAnchorElement>("a[href]"));
-        const images = Array.from(row.querySelectorAll<HTMLImageElement>("img[src]"));
-        const chunks = Array.from(row.querySelectorAll("td,th,span,strong,small,p,div,a"))
-          .map((element) => element.textContent?.replace(/\s+/g, " ").trim() ?? "")
-          .filter(Boolean)
-          .slice(0, 20);
-        const marketplaceLink = links.find((link) => /mp\/showcase\/home/i.test(link.href)) ?? null;
-        const marketplaceHref = marketplaceLink?.href ?? null;
-        const storeId = marketplaceHref?.match(/[?&]id=(\d+)/i)?.[1] ?? null;
-        const tcgId = marketplaceHref?.match(/[?&]tcg=(\d+)/i)?.[1] ?? null;
-
-        const priceText = text.match(pricePattern)?.[0] ?? null;
-        const languageText = chunks.find((chunk) => languagePattern.test(chunk)) ?? text.match(languagePattern)?.[0] ?? null;
-        const conditionText = chunks.find((chunk) => conditionPattern.test(chunk)) ?? text.match(conditionPattern)?.[0] ?? null;
-        const quantityChunk = chunks.find((chunk) => /\b(qtd|quantidade|disponivel|estoque)\b/i.test(chunk)) ?? null;
-        const quantityMatch =
-          quantityChunk?.match(/\d+/)?.[0] ??
-          text.match(/\b(?:qtd|quantidade|disponivel|estoque)[:\s]*(\d+)/i)?.[1] ??
-          text.match(/\bde\s+(\d+)\b/i)?.[1] ??
-          null;
-        const sellerText =
-          links.find((link) => link.textContent?.trim() && !pricePattern.test(link.textContent))?.textContent?.trim() ??
-          (storeId ? `STORE_${storeId}` : null) ??
-          chunks.find((chunk) => !pricePattern.test(chunk) && chunk !== languageText && chunk !== conditionText) ??
-          null;
-        const storeText =
-          row.querySelector<HTMLElement>("strong,b,h3,h4")?.textContent?.replace(/\s+/g, " ").trim() ??
-          (storeId ? `STORE_${storeId}` : null) ??
-          sellerText;
-        const offerUrl = marketplaceHref ?? links[0]?.href ?? null;
-        const imageUrl =
-          images.find((image) => !/icon-|comparador\//i.test(image.src))?.src ?? null;
-        const sourceOfferId = tcgId ?? row.id?.replace(/^mpline_/, "") ?? offerUrl?.match(/\/(\d+)(?:[/?#]|$)/)?.[1] ?? null;
-        const key = [offerUrl ?? "", sellerText ?? "", priceText ?? "", conditionText ?? "", languageText ?? ""].join("|");
-
-        if (!uniqueOffers.has(key)) {
-          uniqueOffers.set(key, {
-            sourceOfferId,
-            priceText,
-            languageText,
-            conditionText,
-            sellerText,
-            storeText,
-            offerUrl,
-            imageUrl,
-            quantity: quantityMatch ? Number(quantityMatch) : null,
-            raw: {
-              text,
-              chunks
-            }
-          });
-        }
+    if (primaryEdition && typeof primaryEdition.img === "string") {
+      if (primaryEdition.img.startsWith("//")) {
+        imageUrl = `${location.protocol}${primaryEdition.img}`;
+      } else if (/^https?:\/\//i.test(primaryEdition.img)) {
+        imageUrl = primaryEdition.img;
+      } else {
+        imageUrl = new URL(primaryEdition.img, location.origin).toString();
       }
     }
-
-    const pageText = document.body.textContent?.replace(/\s+/g, " ").trim() ?? "";
-    let name: string | null = null;
-    let imageUrl: string | null = null;
 
     for (const selector of nameSelectors) {
       const element = document.querySelector<HTMLElement>(selector);
       const text = element?.textContent?.replace(/\s+/g, " ").trim();
-      if (text) {
+      if (text && !/lista de compras/i.test(text) && (/rayquaza/i.test(text) || !name)) {
         name = text;
         break;
       }
     }
 
-    for (const selector of imageSelectors) {
-      const element = document.querySelector<HTMLImageElement>(selector);
-      if (element?.src) {
-        imageUrl = element.src;
-        break;
+    if (!imageUrl) {
+      for (const selector of imageSelectors) {
+        const element = document.querySelector<HTMLImageElement>(selector);
+        if (element?.src && !/logo|loading/i.test(element.src)) {
+          imageUrl = element.src;
+          break;
+        }
+      }
+    }
+
+    if (!name) {
+      name = urlDerivedName ?? titleName;
+    }
+
+    const offers: LigaPokemonDetailRaw["offers"] = [];
+
+    for (const stock of cardsStock) {
+      const storeId = String(stock.lj_id ?? "");
+      const store = cardsStores[storeId] ?? {};
+      const offerId = String(stock.id ?? "");
+      const rawPrice = stock.precoFinal;
+      const rawQuantity = stock.quant;
+      const rawLanguageId = Number(stock.idioma ?? Number.NaN);
+      const rawQualityId = Number(stock.qualid ?? Number.NaN);
+      const rawExtraId = Number(stock.extras ?? Number.NaN);
+
+      let language: Record<string, unknown> | null = null;
+      for (const entry of languages) {
+        if (Number(entry.id ?? Number.NaN) === rawLanguageId) {
+          language = entry;
+          break;
+        }
+      }
+
+      let quality: Record<string, unknown> | null = null;
+      for (const entry of qualities) {
+        if (Number(entry.id ?? Number.NaN) === rawQualityId) {
+          quality = entry;
+          break;
+        }
+      }
+
+      let extra: Record<string, unknown> | null = null;
+      for (const entry of extras) {
+        if (Number(entry.id ?? Number.NaN) === rawExtraId) {
+          extra = entry;
+          break;
+        }
+      }
+
+      let price: number | null = null;
+      if (typeof rawPrice === "number" && Number.isFinite(rawPrice)) {
+        price = rawPrice;
+      } else if (typeof rawPrice === "string" && rawPrice.trim().length > 0) {
+        const parsedPrice = Number(rawPrice);
+        if (Number.isFinite(parsedPrice)) {
+          price = parsedPrice;
+        }
+      }
+
+      let quantity: number | null = null;
+      if (typeof rawQuantity === "number" && Number.isFinite(rawQuantity)) {
+        quantity = rawQuantity;
+      } else if (typeof rawQuantity === "string" && rawQuantity.trim().length > 0) {
+        const parsedQuantity = Number(rawQuantity);
+        if (Number.isFinite(parsedQuantity)) {
+          quantity = parsedQuantity;
+        }
+      }
+
+      const offerUrl =
+        storeId && offerId
+          ? `${location.origin}/?view=mp/showcase/home&id=${encodeURIComponent(storeId)}&tcg=${encodeURIComponent(offerId)}`
+          : location.href;
+
+      offers.push({
+        sourceOfferId: offerId || null,
+        priceText: typeof price === "number" ? `R$ ${price.toFixed(2).replace(".", ",")}` : null,
+        languageText: typeof language?.label === "string" ? language.label : null,
+        conditionText: typeof quality?.label === "string" ? quality.label : null,
+        sellerText: typeof store.lj_name === "string" ? store.lj_name : null,
+        storeText: typeof store.lj_name === "string" ? store.lj_name : null,
+        offerUrl,
+        imageUrl,
+        quantity,
+        raw: {
+          stock,
+          store,
+          language,
+          quality,
+          extra
+        }
+      });
+    }
+
+    let year: number | null = null;
+    if (primaryEdition && typeof primaryEdition.date === "string") {
+      const parsedYear = Number(primaryEdition.date.slice(0, 4));
+      if (Number.isFinite(parsedYear) && parsedYear > 0) {
+        year = parsedYear;
       }
     }
 
     return {
       name,
-      setName: pageText.match(/(Scarlet.*?|Sword.*?|Sun.*?|XY.*?|Black.*?|Promo.*?)($|\s{2,})/i)?.[1] ?? null,
-      setCode: pageText.match(/\b[A-Z]{2,5}\d{0,3}\b/)?.[0] ?? null,
-      year: Number(pageText.match(/\b(19|20)\d{2}\b/)?.[0] ?? 0) || null,
-      number: pageText.match(/(?:No\.?|Numero|#)\s*([A-Z0-9/-]+)/i)?.[1] ?? null,
-      rarity: pageText.match(/\b(Common|Uncommon|Rare|Ultra Rare|Secret Rare|Promo)\b/i)?.[0] ?? null,
+      setName: typeof primaryEdition?.name === "string" ? primaryEdition.name : null,
+      setCode: typeof primaryEdition?.code === "string" ? primaryEdition.code : null,
+      year,
+      number: typeof primaryEdition?.num === "string" ? primaryEdition.num : null,
+      rarity:
+        primaryEdition && typeof primaryEdition.rarid === "object" && primaryEdition.rarid !== null
+          ? String((primaryEdition.rarid as Record<string, unknown>).label ?? "")
+          : null,
       imageUrl,
-      offers: Array.from(uniqueOffers.values()) as LigaPokemonDetailRaw["offers"],
+      offers,
       raw: {
         pageTitle: document.title,
-        bodyPreview: pageText.slice(0, 2_000)
+        editionCount: cardsEditions.length,
+        stockCount: cardsStock.length
       }
     };
   }, {
     nameSelectors: ligaPokemonSelectors.detailName,
-    imageSelectors: ligaPokemonSelectors.detailImage,
-    offerSelectors: ligaPokemonSelectors.offerRows
+    imageSelectors: ligaPokemonSelectors.detailImage
   });
 }
 
@@ -324,7 +386,13 @@ export async function scrapeLigaPokemon(): Promise<SourceScrapeResult> {
           waitUntil: "domcontentloaded",
           timeout: 30_000
         });
-        await detailPage.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => undefined);
+        await detailPage.waitForFunction(
+          () =>
+            Array.isArray((globalThis as Record<string, unknown>).cards_editions) &&
+            Array.isArray((globalThis as Record<string, unknown>).cards_stock),
+          undefined,
+          { timeout: 8_000 }
+        );
         await detailPage.waitForTimeout(env.REQUEST_DELAY_MS);
 
         const detail = await extractDetail(detailPage);

@@ -26,9 +26,9 @@ export function OfferCard({ offer }: OfferCardProps) {
         </div>
 
         <div>
-          <h3>{offer.cardName}</h3>
-          <p className="muted">
-            {offer.setName ?? "Colecao nao identificada"} • {offer.year ?? "Ano n/d"}
+          <h3 className="offer-title">{offer.cardName}</h3>
+          <p className="muted offer-subtitle">
+            {offer.setName ?? "Colecao nao identificada"} | {offer.year ?? "Ano n/d"}
           </p>
         </div>
 
@@ -65,4 +65,3 @@ export function OfferCard({ offer }: OfferCardProps) {
     </article>
   );
 }
-

@@ -85,9 +85,9 @@ export function CardDetailPage() {
             </div>
             <div className="detail-copy">
               <p className="eyebrow">Detalhe do card</p>
-              <h3>{card.name}</h3>
-              <p className="muted">
-                {card.setName ?? "Colecao nao identificada"} • {card.year ?? "Ano n/d"} {card.number ? `• #${card.number}` : ""}
+              <h3 className="detail-title">{card.name}</h3>
+              <p className="muted detail-subtitle">
+                {card.setName ?? "Colecao nao identificada"} | {card.year ?? "Ano n/d"} {card.number ? `| #${card.number}` : ""}
               </p>
               <div className="badge-row">
                 {card.sources.map((source) => (
@@ -135,4 +135,3 @@ export function CardDetailPage() {
     </section>
   );
 }
-
