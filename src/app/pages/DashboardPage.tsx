@@ -56,8 +56,8 @@ export function DashboardPage() {
           <button className="primary-button" onClick={handleRunMonitor} disabled={isRunningMonitor}>
             {isRunningMonitor ? "Executando..." : "Rodar monitoramento agora"}
           </button>
-          <Link className="secondary-button" to="/cards">
-            Ver cards monitorados
+          <Link className="secondary-button" to="/new-offers">
+            Ver novos anuncios
           </Link>
         </div>
       </div>
@@ -150,4 +150,3 @@ export function DashboardPage() {
     </section>
   );
 }
-

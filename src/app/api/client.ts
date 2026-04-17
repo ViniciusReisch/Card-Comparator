@@ -84,6 +84,21 @@ export type CardsResponse = {
   };
 };
 
+export type OffersResponse = {
+  items: OfferItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+  };
+  card?: CardItem;
+};
+
+export type CardDetailResponse = CardItem & {
+  offersCount: number;
+  latestOffers: OfferItem[];
+};
+
 export type RunsResponse = {
   items: Array<{
     id: number;
@@ -132,6 +147,21 @@ export const apiClient = {
     const suffix = searchParams?.toString() ? `?${searchParams.toString()}` : "";
     return request<CardsResponse>(`/api/cards${suffix}`);
   },
+  getCardDetail(cardId: number): Promise<CardDetailResponse> {
+    return request<CardDetailResponse>(`/api/cards/${cardId}`);
+  },
+  getCardOffers(cardId: number, searchParams?: URLSearchParams): Promise<OffersResponse> {
+    const suffix = searchParams?.toString() ? `?${searchParams.toString()}` : "";
+    return request<OffersResponse>(`/api/cards/${cardId}/offers${suffix}`);
+  },
+  getNewOffers(searchParams?: URLSearchParams): Promise<OffersResponse> {
+    const suffix = searchParams?.toString() ? `?${searchParams.toString()}` : "";
+    return request<OffersResponse>(`/api/offers/new${suffix}`);
+  },
+  getOffers(searchParams?: URLSearchParams): Promise<OffersResponse> {
+    const suffix = searchParams?.toString() ? `?${searchParams.toString()}` : "";
+    return request<OffersResponse>(`/api/offers${suffix}`);
+  },
   getRuns(): Promise<RunsResponse> {
     return request<RunsResponse>("/api/runs");
   },
@@ -141,4 +171,3 @@ export const apiClient = {
     });
   }
 };
-

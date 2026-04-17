@@ -2,6 +2,7 @@ import { NavLink, Outlet } from "react-router-dom";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard" },
+  { to: "/new-offers", label: "Novos anuncios" },
   { to: "/cards", label: "Cards" },
   { to: "/runs", label: "Execucoes" }
 ];
@@ -53,4 +54,3 @@ export function Layout() {
     </div>
   );
 }
-

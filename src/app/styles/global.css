@@ -75,6 +75,8 @@ button {
 .panel h3,
 .hero-card h3,
 .card-body h3,
+.offer-card h3,
+.detail-copy h3,
 .list-row h4 {
   margin: 0;
   font-family: Georgia, "Times New Roman", serif;
@@ -166,6 +168,7 @@ button {
   display: flex;
   gap: 0.75rem;
   align-items: flex-start;
+  flex-wrap: wrap;
 }
 
 .primary-button,
@@ -285,9 +288,30 @@ button {
   color: #7c5c16;
 }
 
+.pill-neutral {
+  background: rgba(24, 48, 33, 0.08);
+  color: var(--text);
+}
+
+.pill-language {
+  background: rgba(47, 138, 91, 0.12);
+  color: var(--green-soft);
+}
+
+.pill-new {
+  background: rgba(255, 221, 140, 0.32);
+  color: #8a5b00;
+}
+
 .filters-inline {
   display: grid;
   grid-template-columns: 1.2fr 1fr 0.9fr auto;
+  gap: 0.75rem;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.75rem;
 }
 
@@ -368,15 +392,22 @@ button {
   gap: 0.85rem;
 }
 
-.card-metrics {
+.card-metrics,
+.detail-stats {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .table-wrap {
   overflow-x: auto;
+}
+
+.table-link {
+  color: var(--green);
+  font-weight: 700;
 }
 
 .data-table {
@@ -399,6 +430,77 @@ button {
   letter-spacing: 0.08em;
 }
 
+.offer-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.offer-card {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.offer-card.is-highlighted {
+  border-color: rgba(184, 138, 44, 0.36);
+  background:
+    linear-gradient(135deg, rgba(255, 246, 219, 0.9), rgba(255, 253, 247, 0.92)),
+    var(--panel);
+}
+
+.offer-image-shell {
+  width: 140px;
+  height: 190px;
+}
+
+.offer-card-body {
+  display: grid;
+  gap: 1rem;
+}
+
+.offer-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.offer-meta-grid div,
+.detail-copy {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.offer-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.detail-hero {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  border-radius: 1.5rem;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.detail-image-shell {
+  width: 220px;
+  height: 300px;
+}
+
+.back-link {
+  width: fit-content;
+}
+
 @media (max-width: 1080px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -411,7 +513,9 @@ button {
 
   .stats-grid,
   .run-summary-grid,
-  .filters-inline {
+  .filters-inline,
+  .filter-grid,
+  .offer-meta-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -430,7 +534,9 @@ button {
 
   .hero-card,
   .list-row,
-  .card-tile {
+  .card-tile,
+  .offer-card,
+  .detail-hero {
     grid-template-columns: 1fr;
     flex-direction: column;
   }
@@ -442,11 +548,19 @@ button {
   .hero-actions,
   .stats-grid,
   .run-summary-grid,
-  .filters-inline {
+  .filters-inline,
+  .filter-grid,
+  .offer-meta-grid {
     grid-template-columns: 1fr;
   }
 
   .list-row-right {
     justify-items: start;
+  }
+
+  .offer-image-shell,
+  .detail-image-shell {
+    width: 100%;
+    max-width: 220px;
   }
 }
