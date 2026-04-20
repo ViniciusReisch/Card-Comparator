@@ -16,8 +16,12 @@ function createIdleState(): MonitorStatusState {
     currentRunId: null,
     runId: null,
     isRunning: false,
+    schedulerEnabled: false,
     startedAt: null,
     finishedAt: null,
+    lastRunStartedAt: null,
+    lastRunFinishedAt: null,
+    nextRunAt: null,
     currentSource: null,
     currentStage: "IDLE",
     totalCardsEstimated: null,
@@ -90,12 +94,18 @@ export class MonitorStatusService {
     totalCardsEstimated?: number | null;
     message?: string;
   }): MonitorStatusSnapshot {
+    const schedulerEnabled = this.state.schedulerEnabled;
+    const nextRunAt = this.state.nextRunAt;
+
     this.state = {
       ...createIdleState(),
+      schedulerEnabled,
+      nextRunAt,
       currentRunId: input.runId,
       runId: input.runId,
       isRunning: true,
       startedAt: input.startedAt,
+      lastRunStartedAt: input.startedAt,
       currentStage: "STARTING",
       totalCardsEstimated: input.totalCardsEstimated ?? null,
       message: input.message ?? "Iniciando monitoramento...",
@@ -169,11 +179,26 @@ export class MonitorStatusService {
       ...this.state,
       isRunning: false,
       finishedAt: input.finishedAt,
+      lastRunFinishedAt: input.finishedAt,
       currentStage: input.stage,
       message: input.message,
       progressPercent: input.progressPercent ?? (input.stage === "FINISHED" ? 100 : this.state.progressPercent),
       currentCardName: null,
       currentCardImageUrl: null,
+      lastUpdatedAt: new Date().toISOString()
+    };
+
+    return this.broadcastStatus();
+  }
+
+  updateScheduler(input: {
+    schedulerEnabled?: boolean;
+    nextRunAt?: string | null;
+  }): MonitorStatusSnapshot {
+    this.state = {
+      ...this.state,
+      schedulerEnabled: input.schedulerEnabled ?? this.state.schedulerEnabled,
+      nextRunAt: input.nextRunAt === undefined ? this.state.nextRunAt : input.nextRunAt,
       lastUpdatedAt: new Date().toISOString()
     };
 

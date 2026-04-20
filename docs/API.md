@@ -2,6 +2,20 @@
 
 Base local: `http://localhost:3333`
 
+## `GET /api/health`
+
+Retorna status simples da aplicacao, uptime e resumo operacional do monitor.
+
+```json
+{
+  "status": "ok",
+  "uptimeSeconds": 42,
+  "schedulerEnabled": true,
+  "isRunning": false,
+  "nextRunAt": "2026-04-20T15:10:00.000Z"
+}
+```
+
 ## `GET /api/dashboard`
 
 Retorna estatisticas gerais, ultimo resumo de execucao, distribuicoes e lista resumida de anuncios novos.
@@ -80,9 +94,14 @@ Retorna o snapshot atual do monitor.
 ```json
 {
   "isRunning": true,
+  "schedulerEnabled": true,
   "runId": 12,
   "currentRunId": 12,
   "startedAt": "2026-04-17T17:00:00.000Z",
+  "finishedAt": null,
+  "lastRunStartedAt": "2026-04-17T17:00:00.000Z",
+  "lastRunFinishedAt": null,
+  "nextRunAt": null,
   "currentSource": "LIGA_POKEMON",
   "currentStage": "SCRAPING_LIGA_CARD_DETAILS",
   "currentCardName": "Rayquaza VMAX",
@@ -112,6 +131,14 @@ Inicia o monitoramento manualmente em background.
 - retorna `202`
 - nao permite execucoes simultaneas
 - retorna `409` quando ja existe um run em andamento
+
+## `POST /api/monitor/pause`
+
+Pausa o agendador automatico. Nao cancela uma coleta que ja esteja em andamento.
+
+## `POST /api/monitor/resume`
+
+Retoma o agendador automatico e agenda a proxima execucao pelo intervalo configurado em `MONITOR_INTERVAL_MINUTES`.
 
 ## `GET /api/runs`
 

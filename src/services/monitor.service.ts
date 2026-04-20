@@ -22,6 +22,14 @@ export class MonitorService {
   }
 
   startManualMonitor(): MonitorStatusSnapshot {
+    return this.startMonitor();
+  }
+
+  startScheduledMonitor(): MonitorStatusSnapshot {
+    return this.startMonitor();
+  }
+
+  private startMonitor(): MonitorStatusSnapshot {
     if (activeMonitorPromise) {
       throw new Error("A monitor run is already in progress.");
     }

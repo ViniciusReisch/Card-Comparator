@@ -65,6 +65,8 @@ export type OfferItem = {
   languageNormalized: string | null;
   conditionRaw: string | null;
   conditionNormalized: string | null;
+  finishRaw: string | null;
+  finishTags: string[];
   priceCents: number;
   currency: string;
   priceBrlCents: number | null;
@@ -134,8 +136,12 @@ export type MonitorStatusResponse = {
   currentRunId: number | null;
   runId: number | null;
   isRunning: boolean;
+  schedulerEnabled: boolean;
   startedAt: string | null;
   finishedAt: string | null;
+  lastRunStartedAt: string | null;
+  lastRunFinishedAt: string | null;
+  nextRunAt: string | null;
   currentSource: string | null;
   currentStage: string;
   totalCardsEstimated: number | null;
@@ -196,7 +202,9 @@ export function formatElapsed(ms: number | null | undefined): string {
   return `${seconds}s`;
 }
 
-export const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3333";
+const configuredApiBaseUrl = (import.meta.env.VITE_API_URL ?? "").trim().replace(/\/$/, "");
+
+export const apiBaseUrl = configuredApiBaseUrl;
 export const monitorEventsUrl = `${apiBaseUrl}/api/monitor/events`;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -247,5 +255,11 @@ export const apiClient = {
   },
   runMonitor(): Promise<MonitorStatusResponse> {
     return request<MonitorStatusResponse>("/api/monitor/run", { method: "POST" });
+  },
+  pauseMonitor(): Promise<MonitorStatusResponse> {
+    return request<MonitorStatusResponse>("/api/monitor/pause", { method: "POST" });
+  },
+  resumeMonitor(): Promise<MonitorStatusResponse> {
+    return request<MonitorStatusResponse>("/api/monitor/resume", { method: "POST" });
   }
 };

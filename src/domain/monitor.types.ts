@@ -54,8 +54,12 @@ export type MonitorStatusSnapshot = {
   currentRunId: number | null;
   runId: number | null;
   isRunning: boolean;
+  schedulerEnabled: boolean;
   startedAt: string | null;
   finishedAt: string | null;
+  lastRunStartedAt: string | null;
+  lastRunFinishedAt: string | null;
+  nextRunAt: string | null;
   currentSource: SourceKey | null;
   currentStage: MonitorStage;
   totalCardsEstimated: number | null;

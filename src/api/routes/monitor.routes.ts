@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { monitorStatusService } from "../../services/monitor-status.service";
 import { monitorService } from "../../services/monitor.service";
+import { monitorSchedulerService } from "../../services/monitor-scheduler.service";
 
 export function createMonitorRouter(): Router {
   const router = Router();
@@ -25,6 +26,14 @@ export function createMonitorRouter(): Router {
       const statusCode = /already in progress/i.test(message) ? 409 : 500;
       res.status(statusCode).json({ error: message });
     }
+  });
+
+  router.post("/monitor/pause", (_req, res) => {
+    res.json(monitorSchedulerService.pause());
+  });
+
+  router.post("/monitor/resume", (_req, res) => {
+    res.json(monitorSchedulerService.resume());
   });
 
   return router;

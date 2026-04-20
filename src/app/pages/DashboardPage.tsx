@@ -15,6 +15,7 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [triggeringRun, setTriggeringRun] = useState(false);
+  const [togglingScheduler, setTogglingScheduler] = useState(false);
   const { status } = useMonitorStatus();
   const previousRunningRef = useRef(false);
 
@@ -60,6 +61,26 @@ export function DashboardPage() {
     }
   }
 
+  async function handleToggleScheduler() {
+    if (!status) {
+      return;
+    }
+
+    try {
+      setTogglingScheduler(true);
+      setError(null);
+      if (status.schedulerEnabled) {
+        await apiClient.pauseMonitor();
+      } else {
+        await apiClient.resumeMonitor();
+      }
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Falha ao alterar agendador.");
+    } finally {
+      setTogglingScheduler(false);
+    }
+  }
+
   const lowestBrl = data?.stats.lowestPrice
     ? formatBrl(data.stats.lowestPrice.priceBrlCents ?? data.stats.lowestPrice.priceCents)
     : null;
@@ -68,6 +89,11 @@ export function DashboardPage() {
   const conditionDistribution = data?.distributions?.condition ?? [];
   const totalLanguageOffers = languageDistribution.reduce((sum, item) => sum + item.count, 0);
   const totalConditionOffers = conditionDistribution.reduce((sum, item) => sum + item.count, 0);
+  const nextRunLabel = status?.nextRunAt
+    ? format(new Date(status.nextRunAt), "dd/MM/yyyy HH:mm")
+    : status?.isRunning
+      ? "apos a execucao atual"
+      : "sem proxima execucao";
 
   return (
     <section className="stack">
@@ -83,13 +109,21 @@ export function DashboardPage() {
               <h2>Monitor Rayquaza TCG</h2>
               <p>Coleta e compara anuncios de cards Rayquaza em Liga Pokemon e CardTrader.</p>
             </div>
-            <div className="hero-actions">
-              <button className="btn btn-primary" onClick={handleRunMonitor} disabled={triggeringRun || status?.isRunning}>
-                {status?.isRunning ? "Monitorando..." : triggeringRun ? "Iniciando..." : "Rodar monitoramento agora"}
-              </button>
-              <Link className="btn btn-secondary" to="/offers">
-                Ver anuncios
-              </Link>
+            <div className="hero-control-stack">
+              <div className="hero-actions">
+                <button className="btn btn-primary" onClick={handleRunMonitor} disabled={triggeringRun || status?.isRunning}>
+                  {status?.isRunning ? "Monitorando..." : triggeringRun ? "Iniciando..." : "Rodar monitoramento agora"}
+                </button>
+                <button className="btn btn-secondary" onClick={handleToggleScheduler} disabled={!status || togglingScheduler}>
+                  {status?.schedulerEnabled ? "Pausar agendador" : "Retomar agendador"}
+                </button>
+                <Link className="btn btn-secondary" to="/offers">
+                  Ver anuncios
+                </Link>
+              </div>
+              <div className="hero-status-line">
+                Agendador {status?.schedulerEnabled ? "ativo" : "pausado"} - proxima: {nextRunLabel}
+              </div>
             </div>
           </div>
 
