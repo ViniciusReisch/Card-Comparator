@@ -13,6 +13,12 @@
     "build": "npm run build:api && npm run build:app",
     "build:api": "tsc -p tsconfig.server.json",
     "build:app": "vite build",
+    "start": "node dist-api/api/server.js",
+    "prod:serve": "npm run build && npm run start",
+    "pm2:start": "pm2 start ecosystem.config.js --env production",
+    "pm2:stop": "pm2 stop ecosystem.config.js",
+    "pm2:restart": "pm2 restart ecosystem.config.js --env production",
+    "pm2:logs": "pm2 logs pokemon-rayquaza-monitor",
     "lint": "npm run lint:server && npm run lint:app",
     "lint:server": "tsc --noEmit -p tsconfig.server.json",
     "lint:app": "tsc --noEmit -p tsconfig.app.json"
@@ -36,9 +42,9 @@
     "@types/react-dom": "^18.3.6",
     "@vitejs/plugin-react": "^4.4.1",
     "concurrently": "^9.1.2",
+    "pm2": "^6.0.14",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3",
     "vite": "^6.2.6"
   }
 }
-
