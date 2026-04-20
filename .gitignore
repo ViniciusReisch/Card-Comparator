@@ -9,12 +9,16 @@ Thumbs.db
 .claude/
 storage/*.sqlite
 storage/*.sqlite-*
+storage/*.log
+storage/**/*.log
 storage/exchange-rate-cache.json
 storage/screenshots/*.png
 storage/screenshots/*.jpg
 storage/screenshots/*.jpeg
 storage/screenshots/*.webp
 storage/screenshots/*.json
+.cloudflared/
+cloudflared*.log
 playwright-report/
 test-results/
 coverage/
