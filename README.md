@@ -60,8 +60,20 @@ DETAIL_CONCURRENCY=1
 CARD_DETAIL_TIMEOUT_MS=20000
 SCRAPER_FAST_MODE=false
 PORT=3333
-VITE_API_URL=http://localhost:3333
+VITE_API_URL=
+ENABLE_BACKGROUND_SCHEDULER=true
+MONITOR_INTERVAL_MINUTES=10
+RUN_ON_BOOT=true
+ENABLE_REMOTE_ACCESS=true
+REMOTE_ACCESS_MODE=cloudflare_tunnel
+APP_PUBLIC_URL=
+API_PUBLIC_URL=
+CLOUDFLARED_BIN=cloudflared
+CLOUDFLARE_TUNNEL_TARGET=http://localhost:3333
+CLOUDFLARE_TUNNEL_HOSTNAME=
 ```
+
+Use `VITE_API_URL=` vazio para producao local e Cloudflare Tunnel. Assim o frontend chama `/api` na mesma origem publica. No modo `npm run dev`, o Vite faz proxy de `/api` para `http://localhost:3333`.
 
 ## Inicializar o banco
 
@@ -88,6 +100,107 @@ npm run dev
 - API Express: `http://localhost:3333`
 - Interface Vite/React: `http://localhost:5173`
 
+## Rodar em producao local no PC
+
+```bash
+npm run build
+npm run start
+```
+
+Ou:
+
+```bash
+npm run prod:serve
+```
+
+Em producao local, o Express serve backend e frontend na mesma porta:
+
+```text
+http://localhost:3333
+```
+
+Scripts auxiliares:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run-local-prod.ps1
+powershell -ExecutionPolicy Bypass -File scripts/run-local-prod.ps1 -UsePm2
+```
+
+```bash
+bash scripts/run-local-prod.sh
+bash scripts/run-local-prod.sh --pm2
+```
+
+## Execucao automatica em segundo plano
+
+O backend possui scheduler interno.
+
+- `ENABLE_BACKGROUND_SCHEDULER=true` liga o agendador.
+- `MONITOR_INTERVAL_MINUTES=10` roda a cada 10 minutos por padrao.
+- `RUN_ON_BOOT=true` dispara uma coleta ao subir a API.
+- O backend bloqueia execucoes simultaneas.
+- O Dashboard mostra se o agendador esta ativo e a proxima execucao.
+
+Controle via API:
+
+```http
+GET /api/monitor/status
+POST /api/monitor/run
+POST /api/monitor/pause
+POST /api/monitor/resume
+```
+
+## PM2
+
+Para deixar rodando enquanto o PC estiver ligado:
+
+```bash
+npm run build
+npm run pm2:start
+```
+
+Comandos:
+
+```bash
+npm run pm2:logs
+npm run pm2:restart
+npm run pm2:stop
+```
+
+O processo PM2 se chama `pokemon-rayquaza-monitor` e usa `ecosystem.config.js`.
+
+## Acesso pelo celular fora da rede local
+
+O caminho preferencial e Cloudflare Tunnel apontando para:
+
+```env
+CLOUDFLARE_TUNNEL_TARGET=http://localhost:3333
+```
+
+Teste rapido:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/setup-cloudflared.ps1 -RunQuickTunnel
+```
+
+```bash
+bash scripts/setup-cloudflared.sh --run-quick-tunnel
+```
+
+Para dominio fixo, configure `CLOUDFLARE_TUNNEL_HOSTNAME` e `APP_PUBLIC_URL` no `.env`.
+
+Guia completo: [docs/CLOUDFLARE_TUNNEL.md](docs/CLOUDFLARE_TUNNEL.md).
+
+## Deploy futuro em VM
+
+Nao e necessario usar VM agora. O projeto ficou preparado para uma VM Linux futura com:
+
+- `scripts/vm-bootstrap.sh`
+- `scripts/vm-update.sh`
+- [docs/ORACLE_VM_DEPLOY.md](docs/ORACLE_VM_DEPLOY.md)
+
+Guia local/PM2: [docs/LOCAL_ACCESS.md](docs/LOCAL_ACCESS.md).
+
 ## Tela Anuncios
 
 A antiga tela de "Novos Anuncios" virou `Anuncios`.
@@ -105,6 +218,8 @@ O backend expoe:
 - `GET /api/monitor/status`
 - `GET /api/monitor/events`
 - `POST /api/monitor/run`
+- `POST /api/monitor/pause`
+- `POST /api/monitor/resume`
 
 O frontend usa **Server-Sent Events (SSE)** para atualizar:
 
@@ -114,6 +229,7 @@ O frontend usa **Server-Sent Events (SSE)** para atualizar:
 - cards processados
 - ofertas encontradas
 - novos anuncios encontrados
+- status do agendador e proxima execucao
 - lista compacta de "Novos cadastrados agora"
 
 Se a conexao SSE cair, a interface faz fallback para polling leve.
@@ -164,6 +280,7 @@ docs/           # documentacao adicional
 Endpoints principais:
 
 - `GET /api/dashboard`
+- `GET /api/health`
 - `GET /api/cards`
 - `GET /api/cards/:id`
 - `GET /api/cards/:id/offers`
@@ -174,6 +291,8 @@ Endpoints principais:
 - `GET /api/monitor/events`
 - `GET /api/runs`
 - `POST /api/monitor/run`
+- `POST /api/monitor/pause`
+- `POST /api/monitor/resume`
 
 Mais detalhes em [docs/API.md](docs/API.md).
 
