@@ -2,10 +2,12 @@ import { DiffService } from "./diff.service";
 import { monitorStatusService } from "./monitor-status.service";
 import { RunService, type MonitorRunSummary, type SourceRunSummary } from "./run.service";
 import { currencyConverter } from "./currency-converter";
+import { notificationService } from "./notification.service";
 import type { MonitorStatusSnapshot } from "../domain/monitor.types";
 import type { SourceKey } from "../domain/source.types";
 import { scrapeLigaPokemon } from "../sources/ligapokemon/ligapokemon.scraper";
 import { scrapeCardTrader } from "../sources/cardtrader/cardtrader.scraper";
+import { scrapeMypCards } from "../sources/mypcards/mypcards.scraper";
 
 let activeMonitorPromise: Promise<MonitorRunSummary> | null = null;
 
@@ -59,7 +61,7 @@ export class MonitorService {
     const sourceCardEstimates = new Map<SourceKey, number>(
       previousSourceRuns
         .filter((sourceRun): sourceRun is typeof sourceRun & { source: SourceKey } =>
-          sourceRun.source === "LIGA_POKEMON" || sourceRun.source === "CARDTRADER"
+          sourceRun.source === "LIGA_POKEMON" || sourceRun.source === "CARDTRADER" || sourceRun.source === "MYPCARDS"
         )
         .map((sourceRun) => [sourceRun.source, sourceRun.cards_found])
     );
@@ -90,6 +92,11 @@ export class MonitorService {
         key: "CARDTRADER" as const,
         label: "CardTrader",
         scrape: scrapeCardTrader
+      },
+      {
+        key: "MYPCARDS" as const,
+        label: "MYP Cards",
+        scrape: scrapeMypCards
       }
     ];
 
@@ -168,7 +175,12 @@ export class MonitorService {
               }
 
               pushStatus({
-                currentStage: source.key === "LIGA_POKEMON" ? "SCRAPING_LIGA_CARD_DETAILS" : "SCRAPING_CARDTRADER_CARD_DETAILS",
+                currentStage:
+                  source.key === "LIGA_POKEMON"
+                    ? "SCRAPING_LIGA_CARD_DETAILS"
+                    : source.key === "MYPCARDS"
+                      ? "SCRAPING_MYPCARDS_CARD_DETAILS"
+                      : "SCRAPING_CARDTRADER_CARD_DETAILS",
                 currentCardName: card.name,
                 currentCardImageUrl: card.imageUrl,
                 message: `Coletando ofertas do card ${card.name}...`
@@ -177,6 +189,7 @@ export class MonitorService {
               for (const recentOffer of persisted.newOffers) {
                 const snapshot = monitorStatusService.pushRecentNewOffer(recentOffer);
                 this.runService.updateProgress(run.id, snapshot);
+                await notificationService.notifyNewOffer(recentOffer, run.id);
               }
             }
           });

@@ -13,6 +13,9 @@ export type OfferRecordInput = {
   languageNormalized: string | null;
   conditionRaw: string | null;
   conditionNormalized: string | null;
+  finishRaw: string | null;
+  finishNormalized: string | null;
+  variantLabel: string | null;
   priceCents: number;
   currency: string;
   originalPriceCents: number | null;
@@ -47,6 +50,9 @@ export type OfferRecord = {
   language_normalized: string | null;
   condition_raw: string | null;
   condition_normalized: string | null;
+  finish_raw: string | null;
+  finish_normalized: string | null;
+  variant_label: string | null;
   price_cents: number;
   currency: string;
   original_price_cents: number | null;
@@ -247,6 +253,7 @@ export class OfferRepository {
               card_id, source, source_offer_id, canonical_offer_key,
               card_name, set_name, set_code, year,
               language_raw, language_normalized, condition_raw, condition_normalized,
+              finish_raw, finish_normalized, variant_label,
               price_cents, currency,
               original_price_cents, original_currency, price_brl_cents, exchange_rate_to_brl, exchange_rate_date,
               image_url, offer_url, seller_name, seller_country, store_name, quantity,
@@ -256,6 +263,7 @@ export class OfferRepository {
               @cardId, @source, @sourceOfferId, @canonicalOfferKey,
               @cardName, @setName, @setCode, @year,
               @languageRaw, @languageNormalized, @conditionRaw, @conditionNormalized,
+              @finishRaw, @finishNormalized, @variantLabel,
               @priceCents, @currency,
               @originalPriceCents, @originalCurrency, @priceBrlCents, @exchangeRateToBrl, @exchangeRateDate,
               @imageUrl, @offerUrl, @sellerName, @sellerCountry, @storeName, @quantity,
@@ -280,6 +288,7 @@ export class OfferRepository {
             set_name = @setName, set_code = @setCode, year = @year,
             language_raw = @languageRaw, language_normalized = @languageNormalized,
             condition_raw = @conditionRaw, condition_normalized = @conditionNormalized,
+            finish_raw = @finishRaw, finish_normalized = @finishNormalized, variant_label = @variantLabel,
             price_cents = @priceCents, currency = @currency,
             original_price_cents = @originalPriceCents, original_currency = @originalCurrency,
             price_brl_cents = @priceBrlCents, exchange_rate_to_brl = @exchangeRateToBrl,
@@ -340,7 +349,7 @@ export class OfferRepository {
     limit: number;
   } {
     const page = Math.max(filters.page, 1);
-    const limit = Math.min(Math.max(filters.limit, 1), 200);
+    const limit = Math.min(Math.max(filters.limit, 1), 500);
     const offset = (page - 1) * limit;
     const { whereSql, params } = this.buildWhereClause(filters);
     const orderBySql = (() => {
@@ -444,5 +453,16 @@ export class OfferRepository {
          ORDER BY count DESC`
       )
       .all() as Array<{ condition: string; count: number }>;
+  }
+
+  getSourceDistribution(): Array<{ source: string; count: number }> {
+    return this.database
+      .prepare(
+        `SELECT source, COUNT(*) AS count
+         FROM offers WHERE is_active = 1
+         GROUP BY source
+         ORDER BY count DESC`
+      )
+      .all() as Array<{ source: string; count: number }>;
   }
 }

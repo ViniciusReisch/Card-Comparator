@@ -144,7 +144,7 @@ export function CardDetailPage() {
                 offersBySource.map(([source, groupedOffers]) => (
                   <OfferTable
                     key={source}
-                    title={source === "LIGA_POKEMON" ? "Liga Pokemon" : "CardTrader"}
+                    title={source === "LIGA_POKEMON" ? "Liga Pokemon" : source === "MYPCARDS" ? "MYP Cards" : "CardTrader"}
                     offers={groupedOffers}
                   />
                 ))

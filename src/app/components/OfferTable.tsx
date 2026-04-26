@@ -2,6 +2,7 @@ import { format } from "date-fns";
 import type { OfferItem } from "../api/client";
 import { formatBrl, formatOriginalPrice } from "../api/client";
 import { ConditionBadge } from "./ConditionBadge";
+import { FinishBadges } from "./FinishBadges";
 import { LanguageBadge } from "./LanguageBadge";
 import { NewOfferBadge } from "./NewOfferBadge";
 
@@ -27,6 +28,7 @@ export function OfferTable({ title, offers }: OfferTableProps) {
               <th>Preco (BRL)</th>
               <th>Idioma</th>
               <th>Estado</th>
+              <th>Extra</th>
               <th>Vendedor / Loja</th>
               <th>Primeira aparicao</th>
               <th></th>
@@ -51,6 +53,9 @@ export function OfferTable({ title, offers }: OfferTableProps) {
                       <ConditionBadge value={offer.conditionNormalized} />
                       {offer.isNew ? <NewOfferBadge /> : null}
                     </div>
+                  </td>
+                  <td>
+                    <FinishBadges tags={offer.finishTags} raw={offer.finishRaw} />
                   </td>
                   <td style={{ fontSize: "0.85rem" }}>
                     {offer.storeName ?? offer.sellerName ?? <span className="muted">-</span>}

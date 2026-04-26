@@ -28,6 +28,7 @@ export type CardTraderOfferRaw = {
   priceText: string | null;
   languageText: string | null;
   conditionText: string | null;
+  finishText: string | null;
   sellerText: string | null;
   sellerCountry: string | null;
   storeText: string | null;

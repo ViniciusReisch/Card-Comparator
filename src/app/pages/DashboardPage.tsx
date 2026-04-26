@@ -16,6 +16,8 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [triggeringRun, setTriggeringRun] = useState(false);
   const [togglingScheduler, setTogglingScheduler] = useState(false);
+  const [testingNotifications, setTestingNotifications] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
   const { status } = useMonitorStatus();
   const previousRunningRef = useRef(false);
 
@@ -81,12 +83,31 @@ export function DashboardPage() {
     }
   }
 
+  async function handleTestNotifications() {
+    try {
+      setTestingNotifications(true);
+      setError(null);
+      setNotificationMessage(null);
+      const response = await apiClient.testNotifications();
+      const sent = response.results.filter((result) => result.status === "sent").length;
+      const failed = response.results.filter((result) => result.status === "failed").length;
+      setNotificationMessage(`${sent} enviada(s), ${failed} falha(s).`);
+      await loadDashboard();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Falha ao testar notificacoes.");
+    } finally {
+      setTestingNotifications(false);
+    }
+  }
+
   const lowestBrl = data?.stats.lowestPrice
     ? formatBrl(data.stats.lowestPrice.priceBrlCents ?? data.stats.lowestPrice.priceCents)
     : null;
 
+  const sourceDistribution = data?.distributions?.source ?? [];
   const languageDistribution = data?.distributions?.language ?? [];
   const conditionDistribution = data?.distributions?.condition ?? [];
+  const totalSourceOffers = sourceDistribution.reduce((sum, item) => sum + item.count, 0);
   const totalLanguageOffers = languageDistribution.reduce((sum, item) => sum + item.count, 0);
   const totalConditionOffers = conditionDistribution.reduce((sum, item) => sum + item.count, 0);
   const nextRunLabel = status?.nextRunAt
@@ -106,8 +127,8 @@ export function DashboardPage() {
         <div className="stack">
           <div className="hero-banner">
             <div className="hero-content">
-              <h2>Monitor Rayquaza TCG</h2>
-              <p>Coleta e compara anuncios de cards Rayquaza em Liga Pokemon e CardTrader.</p>
+              <img className="hero-logo" src="/rayquaza-logo.png" alt="Rayquaza Monitor" />
+              <p>Coleta e compara anuncios de cards Rayquaza em Liga Pokemon, CardTrader e MYP Cards.</p>
             </div>
             <div className="hero-control-stack">
               <div className="hero-actions">
@@ -138,11 +159,51 @@ export function DashboardPage() {
                 <StatCard label="Cards monitorados" value={String(data.stats.totalRayquazasMonitored)} />
                 <StatCard label="Ofertas ativas" value={String(data.stats.totalActiveOffers)} />
                 <StatCard label="Novos anuncios" value={String(data.stats.newOffersLastRun)} />
+                <StatCard label="Notificacoes enviadas" value={String(data.notifications.lastRunSentCount)} />
                 <StatCard
                   label="Menor preco (BRL)"
                   value={lowestBrl ?? "-"}
                   hint={data.stats.lowestPrice?.cardName}
                 />
+              </div>
+
+              <div className="panel">
+                <div className="panel-header">
+                  <div>
+                    <div className="panel-title">Notificacoes</div>
+                    <div className="panel-sub">
+                      ntfy {data.notifications.providers.ntfy.enabled ? "habilitado" : "desabilitado"} - Telegram{" "}
+                      {data.notifications.providers.telegram.enabled ? "habilitado" : "desabilitado"}
+                    </div>
+                  </div>
+                  <button className="btn btn-ghost btn-sm" onClick={handleTestNotifications} disabled={testingNotifications}>
+                    {testingNotifications ? "Testando..." : "Enviar teste"}
+                  </button>
+                </div>
+
+                <div className="run-summary-grid">
+                  <div>
+                    <span className="label">ntfy</span>
+                    <strong>{data.notifications.providers.ntfy.configured ? "configurado" : "sem topico"}</strong>
+                  </div>
+                  <div>
+                    <span className="label">Telegram</span>
+                    <strong>{data.notifications.providers.telegram.configured ? "configurado" : "sem chat"}</strong>
+                  </div>
+                  <div>
+                    <span className="label">Ultima execucao</span>
+                    <strong>{data.notifications.lastRunSentCount}</strong>
+                  </div>
+                  <div>
+                    <span className="label">Por provider</span>
+                    <strong>
+                      ntfy {data.notifications.lastRunSentByProvider.ntfy} / Telegram{" "}
+                      {data.notifications.lastRunSentByProvider.telegram}
+                    </strong>
+                  </div>
+                </div>
+
+                {notificationMessage ? <p className="muted" style={{ marginTop: "0.75rem" }}>{notificationMessage}</p> : null}
               </div>
 
               <div className="panel">
@@ -178,7 +239,33 @@ export function DashboardPage() {
                 )}
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+              <div className="split-grid">
+                <div className="panel">
+                  <div className="panel-header">
+                    <div className="panel-title">Fontes das ofertas</div>
+                  </div>
+                  {sourceDistribution.length === 0 ? (
+                    <p className="muted" style={{ fontSize: "0.85rem" }}>Sem dados ainda.</p>
+                  ) : (
+                    <div className="dist-list">
+                      {sourceDistribution.map((item) => (
+                        <div key={item.source} className="dist-item">
+                          <div className="dist-label">
+                            <SourceBadge source={item.source} />
+                          </div>
+                          <div className="dist-bar-wrap">
+                            <div
+                              className="dist-bar"
+                              style={{ width: `${Math.round((item.count / totalSourceOffers) * 100)}%` }}
+                            />
+                          </div>
+                          <div className="dist-count">{item.count}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="panel">
                   <div className="panel-header">
                     <div className="panel-title">Idiomas das ofertas</div>
@@ -263,7 +350,7 @@ export function DashboardPage() {
                             </span>
                             <span className="list-subtitle">
                               {offer.setName ?? "Colecao n/d"}
-                              {offer.storeName || offer.sellerName ? ` · ${offer.storeName ?? offer.sellerName}` : ""}
+                              {offer.storeName || offer.sellerName ? ` - ${offer.storeName ?? offer.sellerName}` : ""}
                             </span>
                           </div>
                           <div className="list-row-right">

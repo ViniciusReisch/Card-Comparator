@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { chromium, type Locator, type Page } from "playwright";
+import { chromium, type Page } from "playwright";
 import { CardRepository } from "../../db/repositories/card.repository";
 import type { ScrapedCardSeed, SourceScrapeResult } from "../../domain/card.types";
 import type { SourceScraperHooks } from "../../domain/scraper.types";
@@ -21,6 +21,17 @@ type QueuedLigaCard = {
 };
 
 const cardRepository = new CardRepository();
+const LIGA_PAGE_SIZE = 40;
+
+type LigaAjaxConfig = {
+  totalReg: string;
+  search: string;
+  orderBy: string;
+  tipo: string;
+  fav: string;
+  iTCG: string;
+  idPokemon: string;
+};
 
 function getRequestDelayMs(): number {
   if (!monitorConfig.delays.fastMode) {
@@ -104,179 +115,220 @@ async function maybeAcceptPopup(page: Page): Promise<void> {
   }
 }
 
-async function countCards(page: Page): Promise<number> {
-  return page.evaluate(({ linkSelectors }) => {
-    const seen = new Set<string>();
-    for (const selector of linkSelectors) {
-      for (const anchor of Array.from(document.querySelectorAll<HTMLAnchorElement>(selector))) {
-        if (anchor.href) seen.add(anchor.href);
+async function ensurePageEvaluateHelpers(page: Page): Promise<void> {
+  await page.evaluate("globalThis.__name = globalThis.__name || ((target) => target);").catch(() => undefined);
+}
+
+async function extractListingCards(page: Page, html: string | null = null): Promise<LigaPokemonListingRaw[]> {
+  await ensurePageEvaluateHelpers(page);
+  return page.evaluate(({ linkSelectors, html }) => {
+    const root = html ? new DOMParser().parseFromString(html, "text/html") : document;
+
+    function absoluteUrl(value: string | null): string | null {
+      if (!value) return null;
+      try {
+        const url = new URL(value, location.href);
+        return url.href;
+      } catch {
+        return null;
       }
     }
-    return seen.size;
-  }, { linkSelectors: ligaPokemonSelectors.listingCardLinks });
-}
 
-async function findVisibleLoadMore(page: Page): Promise<Locator | null> {
-  for (const selector of ligaPokemonSelectors.loadMoreButtons) {
-    const locator = page.locator(selector).filter({ hasText: /ver mais/i }).first();
-    if ((await locator.count()) === 0) continue;
-    if (await locator.isVisible().catch(() => false)) return locator;
-  }
+    function isCardDetailHref(value: string | null): boolean {
+      const absolute = absoluteUrl(value);
+      if (!absolute) return false;
 
-  const byText = page.getByText(/ver mais/i).first();
-  if ((await byText.count()) > 0 && (await byText.isVisible().catch(() => false))) {
-    return byText;
-  }
+      try {
+        const url = new URL(absolute);
+        return /cards\/card/i.test(url.searchParams.get("view") ?? "") || /view=cards\/card/i.test(url.href);
+      } catch {
+        return /view=cards\/card/i.test(absolute);
+      }
+    }
 
-  return null;
-}
+    function cleanText(value: string | null | undefined): string | null {
+      const text = value?.replace(/\s+/g, " ").trim() ?? "";
+      return text.length > 0 ? text : null;
+    }
 
-async function extractListingCards(page: Page): Promise<LigaPokemonListingRaw[]> {
-  return page.evaluate(({ linkSelectors }) => {
+    function firstText(container: Element, selectors: string[]): string | null {
+      for (const selector of selectors) {
+        const text = cleanText(container.querySelector<HTMLElement>(selector)?.textContent);
+        if (text) return text;
+      }
+      return null;
+    }
+
     const uniqueAnchors = new Map<string, HTMLAnchorElement>();
     for (const selector of linkSelectors) {
-      for (const anchor of Array.from(document.querySelectorAll<HTMLAnchorElement>(selector))) {
-        if (!anchor.href || uniqueAnchors.has(anchor.href)) continue;
-        uniqueAnchors.set(anchor.href, anchor);
+      for (const anchor of Array.from(root.querySelectorAll<HTMLAnchorElement>(selector))) {
+        const href = anchor.getAttribute("href");
+        const detailUrl = absoluteUrl(href);
+        if (!detailUrl || !isCardDetailHref(href) || uniqueAnchors.has(detailUrl)) continue;
+        uniqueAnchors.set(detailUrl, anchor);
       }
     }
 
-    return Array.from(uniqueAnchors.values()).map((anchor) => {
+    return Array.from(uniqueAnchors.entries()).map(([detailUrl, anchor]) => {
       const container =
+        anchor.closest(".mtg-single") ??
         anchor.closest("article, li, tr, .card, .row, .col, .box, .item") ??
         anchor.parentElement ??
         anchor;
       const image =
-        container.querySelector<HTMLImageElement>("img") ??
+        container.querySelector<HTMLImageElement>(".main-card, img") ??
         anchor.querySelector<HTMLImageElement>("img");
-      const textChunks = Array.from(container.querySelectorAll("h1,h2,h3,h4,strong,span,small,p,div"))
-        .map((element) => element.textContent?.replace(/\s+/g, " ").trim() ?? "")
+      const rawImageUrl =
+        image?.getAttribute("src") ??
+        image?.getAttribute("data-src") ??
+        image?.getAttribute("data-original") ??
+        null;
+      const imageUrl = absoluteUrl(rawImageUrl);
+      const textChunks = Array.from(container.querySelectorAll("h1,h2,h3,h4,strong,span,small,p,div,a"))
+        .map((element) => cleanText(element.textContent) ?? "")
         .filter(Boolean)
         .slice(0, 30);
       const nameCandidate =
         anchor.getAttribute("title") ||
         image?.getAttribute("alt") ||
+        firstText(container, [".mtg-name-aux a", ".mtg-name a", ".mtg-name", ".mtg-names a"]) ||
         textChunks.find((value) => /rayquaza/i.test(value)) ||
         anchor.textContent;
+      const setNameCandidate = firstText(container, [".edition-name", ".mtg-edition", ".edition"]);
+      const numberCandidate =
+        firstText(container, [".mtg-numeric-code"])?.replace(/[()]/g, "") ??
+        detailUrl.match(/[?&]num=([^&#]+)/i)?.[1] ??
+        textChunks.find((value) => /#?\d{1,4}[A-Z]?/i.test(value)) ??
+        null;
       const yearCandidate = textChunks.find((value) => /\b(19|20)\d{2}\b/.test(value)) ?? null;
-      const numberCandidate = textChunks.find((value) => /#?\d{1,4}[A-Z]?/i.test(value)) ?? null;
 
       return {
         sourceCardId: null,
-        name: nameCandidate ?? null,
-        setName: textChunks.find((value) => !/rayquaza/i.test(value) && value !== yearCandidate) ?? null,
+        name: cleanText(nameCandidate),
+        setName: setNameCandidate ?? textChunks.find((value) => !/rayquaza/i.test(value) && value !== yearCandidate) ?? null,
         setCode: null,
         year: yearCandidate ? Number(yearCandidate.match(/\b(19|20)\d{2}\b/)?.[0] ?? 0) : null,
         number: numberCandidate,
         rarity: textChunks.find((value) => /rare|ultra|secret|promo|holo/i.test(value)) ?? null,
-        imageUrl: image?.src ?? null,
-        detailUrl: anchor.href,
-        raw: { textChunks }
+        imageUrl,
+        detailUrl,
+        raw: {
+          textChunks,
+          listingText: cleanText(container.textContent),
+          listingSource: html ? "ajax" : "initial"
+        }
       };
     });
-  }, { linkSelectors: ligaPokemonSelectors.listingCardLinks });
+  }, { linkSelectors: ligaPokemonSelectors.listingCardLinks, html });
 }
 
-async function scrollToBottom(page: Page): Promise<void> {
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await page.waitForTimeout(400);
+async function extractAjaxConfig(page: Page): Promise<LigaAjaxConfig> {
+  await ensurePageEvaluateHelpers(page);
+  return page.evaluate(() => {
+    const scripts = Array.from(document.scripts).map((script) => script.textContent ?? "").join("\n");
+    const currentUrl = new URL(location.href);
+    const readCall = (method: string): string | null => {
+      const match = scripts.match(new RegExp(`mcards\\.${method}\\((?:\"([^\"]*)\"|'([^']*)'|([^)]*))\\)`));
+      return (match?.[1] ?? match?.[2] ?? match?.[3] ?? null)?.trim() ?? null;
+    };
+
+    return {
+      totalReg: readCall("setTotalReg") ?? "9999",
+      search: readCall("setSearch") ?? currentUrl.searchParams.get("card") ?? "rayquaza",
+      orderBy: currentUrl.searchParams.get("orderBy") ?? "",
+      tipo: readCall("setTipo") ?? currentUrl.searchParams.get("tipo") ?? "1",
+      fav: "false",
+      iTCG: currentUrl.searchParams.get("iTCG") ?? "2",
+      idPokemon: currentUrl.searchParams.get("idPokemon") ?? "0"
+    };
+  });
 }
 
-async function expandAllResults(page: Page, hooks?: SourceScraperHooks): Promise<void> {
-  const maxClicks = monitorConfig.sources.ligapokemon.maxVerMaisClicks;
-  const loadWaitMs = 6_000;
-  let stuckCount = 0;
+async function fetchLigaListingPage(
+  page: Page,
+  config: LigaAjaxConfig,
+  pageNumber: number
+): Promise<string> {
+  const key = (pageNumber - 1) * LIGA_PAGE_SIZE;
+  const response = await page.context().request.post("https://www.ligapokemon.com.br/ajax/cards/main.php", {
+    headers: {
+      "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "x-requested-with": "XMLHttpRequest",
+      referer: monitorConfig.sources.ligapokemon.searchUrl
+    },
+    form: {
+      opc: "nextPage",
+      page: String(pageNumber),
+      totalReg: config.totalReg,
+      search: config.search,
+      orderBy: config.orderBy,
+      tipo: config.tipo,
+      fav: config.fav,
+      iTCG: config.iTCG,
+      idPokemon: config.idPokemon,
+      key: String(key)
+    }
+  });
 
-  for (let clickIndex = 0; clickIndex < maxClicks; clickIndex += 1) {
-    const countBefore = await countCards(page);
+  if (!response.ok()) {
+    throw new Error(`Liga Pokemon listing page ${pageNumber} failed with status ${response.status()}`);
+  }
+
+  const payload = await response.json().catch(async () => ({ html: await response.text() })) as { html?: unknown };
+  return typeof payload.html === "string" ? payload.html : "";
+}
+
+async function collectAllListingCards(page: Page, hooks?: SourceScraperHooks): Promise<LigaPokemonListingRaw[]> {
+  const uniqueCards = new Map<string, LigaPokemonListingRaw>();
+  const addCards = (cards: LigaPokemonListingRaw[]) => {
+    let added = 0;
+    for (const card of cards) {
+      if (!card.detailUrl || uniqueCards.has(card.detailUrl)) continue;
+      try {
+        const cardParam = (new URL(card.detailUrl).searchParams.get("card") ?? card.name ?? "").toLowerCase();
+        if (!cardParam.includes("rayquaza")) continue;
+      } catch {
+        if (card.name && !/rayquaza/i.test(card.name)) continue;
+      }
+      uniqueCards.set(card.detailUrl, card);
+      added += 1;
+    }
+    return added;
+  };
+
+  const initialCards = await extractListingCards(page);
+  addCards(initialCards);
+  console.log(`[ligapokemon] lote inicial: ${initialCards.length} links reais de cards`);
+
+  const config = await extractAjaxConfig(page);
+  let emptyPages = 0;
+
+  for (let pageNumber = 2; pageNumber <= monitorConfig.sources.ligapokemon.maxVerMaisClicks + 1; pageNumber += 1) {
     await hooks?.onStageChange?.({
       source: "LIGA_POKEMON",
       stage: "EXPANDING_LIGA_LOAD_MORE",
-      message: `Expandindo resultado da Liga Pokemon... ${countBefore} cards visiveis.`,
-      totalCardsDiscovered: countBefore
+      message: `Carregando lote ${pageNumber} da Liga Pokemon... ${uniqueCards.size} cards reais encontrados.`,
+      totalCardsDiscovered: uniqueCards.size
     });
 
-    // scroll to bottom so the button becomes visible/lazy-rendered
-    await scrollToBottom(page);
+    await page.waitForTimeout(getRequestDelayMs());
+    const html = await fetchLigaListingPage(page, config, pageNumber);
+    const cards = html.length > 0 ? await extractListingCards(page, html) : [];
+    const added = addCards(cards);
 
-    const button = await findVisibleLoadMore(page);
-    if (!button) {
-      // one more try after extra wait — sometimes button renders lazily
-      await page.waitForTimeout(800);
-      await scrollToBottom(page);
-      const buttonRetry = await findVisibleLoadMore(page);
-      if (!buttonRetry) {
-        console.log(`[ligapokemon] botao 'Ver Mais' nao encontrado apos ${clickIndex} cliques. Total: ${countBefore} cards.`);
-        break;
-      }
-    }
+    console.log(`[ligapokemon] lote ${pageNumber}: ${cards.length} links de cards, ${added} novos, total ${uniqueCards.size}`);
 
-    const btn = (await findVisibleLoadMore(page))!;
-
-    const isDisabled = await btn.isDisabled().catch(() => false);
-    if (isDisabled) {
-      console.log(`[ligapokemon] botao 'Ver Mais' desabilitado. Total: ${countBefore} cards.`);
-      break;
-    }
-
-    await btn.scrollIntoViewIfNeeded().catch(() => undefined);
-    await page.waitForTimeout(200);
-
-    let clicked = false;
-    try {
-      await btn.click({ timeout: 5_000, force: true });
-      clicked = true;
-    } catch {
-      try {
-        await btn.evaluate((element) => { (element as HTMLElement).click(); });
-        clicked = true;
-      } catch {
-        clicked = false;
-      }
-    }
-
-    if (!clicked) {
-      stuckCount += 1;
-      if (stuckCount >= 5) {
-        console.log(`[ligapokemon] nao foi possivel clicar em 'Ver Mais'. Total: ${countBefore} cards.`);
-        break;
-      }
-      await page.waitForTimeout(1_000);
+    if (cards.length === 0 || added === 0) {
+      emptyPages += 1;
+      if (emptyPages >= 2) break;
       continue;
     }
 
-    await Promise.race([
-      page.waitForFunction(
-        ({ before, selectors }: { before: number; selectors: readonly string[] }) => {
-          const seen = new Set<string>();
-          for (const selector of selectors) {
-            for (const anchor of Array.from(document.querySelectorAll<HTMLAnchorElement>(selector))) {
-              if (anchor.href) seen.add(anchor.href);
-            }
-          }
-          return seen.size > before;
-        },
-        { before: countBefore, selectors: ligaPokemonSelectors.listingCardLinks },
-        { timeout: loadWaitMs }
-      ).catch(() => undefined),
-      page.waitForLoadState("networkidle", { timeout: loadWaitMs }).catch(() => undefined),
-      page.waitForTimeout(loadWaitMs)
-    ]);
-
-    const countAfter = await countCards(page);
-    if (countAfter <= countBefore) {
-      stuckCount += 1;
-      if (stuckCount >= 5) {
-        console.log(`[ligapokemon] sem aumento de cards apos ${stuckCount} tentativas. Total: ${countBefore} cards.`);
-        break;
-      }
-      console.log(`[ligapokemon] sem aumento (stuckCount=${stuckCount}), aguardando...`);
-      await page.waitForTimeout(1_500);
-    } else {
-      stuckCount = 0;
-      console.log(`[ligapokemon] clique ${clickIndex + 1}: ${countBefore} -> ${countAfter} cards`);
-    }
+    emptyPages = 0;
   }
+
+  console.log(`[ligapokemon] listagem encerrada: ${uniqueCards.size} links reais de cards`);
+  return Array.from(uniqueCards.values());
 }
 
 async function extractDetail(page: Page): Promise<LigaPokemonDetailRaw> {
@@ -327,12 +379,49 @@ async function extractDetail(page: Page): Promise<LigaPokemonDetailRaw> {
     if (!name) name = urlDerivedName ?? titleName;
 
     const offers: LigaPokemonDetailRaw["offers"] = [];
+    const priceKeys = [
+      "precoFinal",
+      "preco",
+      "valorFinal",
+      "valor",
+      "priceFinal",
+      "price",
+      "precoVenda",
+      "vl_preco",
+      "vlPreco"
+    ];
+
+    function firstPresentValue(source: Record<string, unknown>, keys: string[]): unknown {
+      for (const key of keys) {
+        if (source[key] !== undefined && source[key] !== null && source[key] !== "") {
+          return source[key];
+        }
+      }
+
+      return null;
+    }
+
+    function parsePriceValue(value: unknown): number | null {
+      if (typeof value === "number" && Number.isFinite(value)) return value;
+      if (typeof value !== "string") return null;
+
+      const text = value.trim();
+      if (!text) return null;
+      const numeric = text.replace(/[^\d,.-]/g, "");
+      if (!numeric) return null;
+      const normalized =
+        numeric.includes(",") && numeric.lastIndexOf(",") > numeric.lastIndexOf(".")
+          ? numeric.replace(/\./g, "").replace(",", ".")
+          : numeric.replace(/,/g, "");
+      const parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
 
     for (const stock of cardsStock) {
       const storeId = String(stock.lj_id ?? "");
       const store = cardsStores[storeId] ?? {};
       const offerId = String(stock.id ?? "");
-      const rawPrice = stock.precoFinal;
+      const rawPrice = firstPresentValue(stock, priceKeys);
       const rawQuantity = stock.quant;
       const rawLanguageId = Number(stock.idioma ?? Number.NaN);
       const rawQualityId = Number(stock.qualid ?? Number.NaN);
@@ -362,11 +451,9 @@ async function extractDetail(page: Page): Promise<LigaPokemonDetailRaw> {
         }
       }
 
-      let price: number | null = null;
-      if (typeof rawPrice === "number" && Number.isFinite(rawPrice)) price = rawPrice;
-      else if (typeof rawPrice === "string" && rawPrice.trim().length > 0) {
-        const parsedPrice = Number(rawPrice);
-        if (Number.isFinite(parsedPrice)) price = parsedPrice;
+      const price = parsePriceValue(rawPrice);
+      if (price === null) {
+        continue;
       }
 
       let quantity: number | null = null;
@@ -380,18 +467,23 @@ async function extractDetail(page: Page): Promise<LigaPokemonDetailRaw> {
         storeId && offerId
           ? `${location.origin}/?view=mp/showcase/home&id=${encodeURIComponent(storeId)}&tcg=${encodeURIComponent(offerId)}`
           : location.href;
+      const finishText = typeof extra?.label === "string" ? extra.label : null;
+      const qualityAcron = typeof quality?.acron === "string" ? quality.acron : null;
+      const qualityLabel = typeof quality?.label === "string" ? quality.label : null;
+      const conditionText = [qualityAcron, qualityLabel].filter(Boolean).join(" - ") || null;
 
       offers.push({
         sourceOfferId: offerId || null,
         priceText: typeof price === "number" ? `R$ ${price.toFixed(2).replace(".", ",")}` : null,
         languageText: typeof language?.label === "string" ? language.label : null,
-        conditionText: typeof quality?.label === "string" ? quality.label : null,
+        conditionText,
+        finishText,
         sellerText: typeof store.lj_name === "string" ? store.lj_name : null,
         storeText: typeof store.lj_name === "string" ? store.lj_name : null,
         offerUrl,
         imageUrl,
         quantity,
-        raw: { stock, store, language, quality, extra }
+        raw: { stock, store, language, quality, extra, finishText, rawPrice }
       });
     }
 
@@ -457,8 +549,23 @@ async function scrapeDetailCard(
   }
 
   await detailPage.waitForTimeout(Math.min(300, requestDelayMs));
+  await ensurePageEvaluateHelpers(detailPage);
   const detail = await extractDetail(detailPage);
   return mapLigaPokemonCard(queuedCard.listing, detail);
+}
+
+function mapListingFallbackCard(queuedCard: QueuedLigaCard): ReturnType<typeof mapLigaPokemonCard> {
+  return mapLigaPokemonCard(queuedCard.listing, {
+    name: queuedCard.listing.name,
+    setName: queuedCard.listing.setName,
+    setCode: queuedCard.listing.setCode,
+    year: queuedCard.listing.year,
+    number: queuedCard.listing.number,
+    rarity: queuedCard.listing.rarity,
+    imageUrl: queuedCard.listing.imageUrl,
+    offers: [],
+    raw: { fallbackFromListing: true }
+  });
 }
 
 export async function scrapeLigaPokemon(hooks?: SourceScraperHooks): Promise<SourceScrapeResult> {
@@ -492,9 +599,7 @@ export async function scrapeLigaPokemon(hooks?: SourceScraperHooks): Promise<Sou
       stage: "EXPANDING_LIGA_LOAD_MORE",
       message: "Expandindo resultados da Liga Pokemon..."
     });
-    await expandAllResults(page, hooks);
-
-    const listingCards = (await extractListingCards(page)).map((card) => ({
+    const listingCards = (await collectAllListingCards(page, hooks)).map((card) => ({
       ...card,
       sourceCardId: card.sourceCardId ?? extractCardIdFromUrl(card.detailUrl)
     }));
@@ -562,6 +667,14 @@ export async function scrapeLigaPokemon(hooks?: SourceScraperHooks): Promise<Sou
             });
           } catch (error) {
             processedCards += 1;
+            const fallbackCard = mapListingFallbackCard(queuedCard);
+            results.push(fallbackCard);
+            await hooks?.onCardScraped?.(fallbackCard, {
+              source: "LIGA_POKEMON",
+              processedCards,
+              totalCards,
+              cardIsNew: queuedCard.cardIsNew
+            });
             const screenshotPath = await saveFailureScreenshot(detailPage, currentName);
             const message = error instanceof Error ? error.message : "Unknown Liga Pokemon detail error";
             errors.push(
@@ -577,6 +690,8 @@ export async function scrapeLigaPokemon(hooks?: SourceScraperHooks): Promise<Sou
             processedCards,
             totalCards
           });
+
+          await detailPage.waitForTimeout(getRequestDelayMs());
         }
       } finally {
         await detailPage.close().catch(() => undefined);

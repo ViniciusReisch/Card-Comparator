@@ -2,6 +2,7 @@ import { format } from "date-fns";
 import { Link } from "react-router-dom";
 import { formatBrl, formatOriginalPrice, type OfferItem } from "../api/client";
 import { ConditionBadge } from "./ConditionBadge";
+import { FinishBadges } from "./FinishBadges";
 import { LanguageBadge } from "./LanguageBadge";
 import { NewOfferBadge } from "./NewOfferBadge";
 import { SourceBadge } from "./SourceBadge";
@@ -27,6 +28,7 @@ export function OfferCard({ offer }: OfferCardProps) {
           <SourceBadge source={offer.source} />
           <LanguageBadge value={offer.languageNormalized} />
           <ConditionBadge value={offer.conditionNormalized} />
+          <FinishBadges tags={offer.finishTags} raw={offer.finishRaw} />
           {offer.isNew && <NewOfferBadge />}
         </div>
 

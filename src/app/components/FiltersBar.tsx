@@ -78,6 +78,7 @@ export function FiltersBar({
           <option value="">Todas</option>
           <option value="LIGA_POKEMON">Liga Pokemon</option>
           <option value="CARDTRADER">CardTrader</option>
+          <option value="MYPCARDS">MYP Cards</option>
         </select>
       </div>
 

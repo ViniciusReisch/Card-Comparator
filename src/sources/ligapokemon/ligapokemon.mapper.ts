@@ -28,6 +28,7 @@ export type LigaPokemonOfferRaw = {
   priceText: string | null;
   languageText: string | null;
   conditionText: string | null;
+  finishText: string | null;
   sellerText: string | null;
   storeText: string | null;
   offerUrl: string | null;

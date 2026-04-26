@@ -1,6 +1,7 @@
 import type { GroupedCardRecord } from "../../db/repositories/card.repository";
 import type { OfferListFilters, OfferListRecord } from "../../db/repositories/offer.repository";
 import type { MonitorRunRecord, MonitorRunSourceRecord } from "../../db/repositories/run.repository";
+import { extractOfferFinish } from "../../normalizers/finish-normalizer";
 
 function readQueryValue(query: Record<string, unknown>, key: string): string | undefined {
   const value = query[key];
@@ -64,7 +65,7 @@ export function buildOfferFilters(
         ? sort
         : "latest",
     page: overrides.page ?? readPage(query),
-    limit: overrides.limit ?? readLimit(query, readNumberQuery(query, "pageSize") ?? 25, 250),
+    limit: overrides.limit ?? readLimit(query, readNumberQuery(query, "pageSize") ?? 25, 500),
     cardGroup: overrides.cardGroup
   };
 }
@@ -86,6 +87,8 @@ export function mapGroupedCard(record: GroupedCardRecord) {
 }
 
 export function mapOffer(record: OfferListRecord) {
+  const finish = extractOfferFinish(record.raw_json);
+
   return {
     id: record.id,
     cardId: record.origin_card_id,
@@ -99,6 +102,10 @@ export function mapOffer(record: OfferListRecord) {
     languageNormalized: record.language_normalized,
     conditionRaw: record.condition_raw,
     conditionNormalized: record.condition_normalized,
+    finishRaw: record.finish_raw ?? finish.finishRaw,
+    finishNormalized: record.finish_normalized ?? finish.finishNormalized,
+    variantLabel: record.variant_label ?? finish.variantLabel,
+    finishTags: record.variant_label ? [record.variant_label] : finish.finishTags,
     priceCents: record.price_cents,
     currency: record.currency,
     priceBrlCents: record.price_brl_cents ?? null,

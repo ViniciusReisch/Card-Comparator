@@ -131,10 +131,10 @@ async function fetchListingCards(
 
   for (const entry of pool) {
     const rid = Number(entry.rid);
-    const haystack = `${entry.n ?? ""} ${entry.x ?? ""} ${entry.lx ?? ""} ${entry.id ?? ""}`.toLowerCase();
+    const nameHaystack = (entry.n ?? "").toLowerCase();
 
     if (ids.size > 0 && !ids.has(rid)) continue;
-    if (query && !haystack.includes(query)) continue;
+    if (query && !nameHaystack.includes(query)) continue;
     if (!entry.id) continue;
 
     const detailUrl = `https://www.cardtrader.com/en/cards/${entry.id}`;
@@ -209,6 +209,34 @@ async function extractDetail(page: Page): Promise<CardTraderDetailRaw> {
       else imageUrl = new URL(imageCandidate, location.origin).toString();
     }
 
+    function cleanText(value: string | null | undefined): string | null {
+      const text = value?.replace(/\s+/g, " ").trim() ?? "";
+      return text.length > 0 ? text : null;
+    }
+
+    function collectFinishCandidates(row: HTMLTableRowElement, descriptionText: string | null): string[] {
+      const values: string[] = [];
+      const finishPattern = /\b(reverse|foil|holo|etched|shattered|master\s*ball|poke\s*ball|pokeball|stamp(?:ed)?|staff|promo|pre\s*release|prerelease|1st|first\s*edition|shadowless|misprint|textless|signed|altered)\b/i;
+      const push = (value: string | null | undefined) => {
+        const text = cleanText(value);
+        if (text && finishPattern.test(text) && !values.includes(text)) values.push(text);
+      };
+
+      push(descriptionText);
+
+      for (const element of Array.from(row.querySelectorAll<HTMLElement>("[data-original-title], [title], [aria-label]"))) {
+        push(element.getAttribute("data-original-title"));
+        push(element.getAttribute("title"));
+        push(element.getAttribute("aria-label"));
+      }
+
+      for (const element of Array.from(row.querySelectorAll<HTMLElement>("[class*='foil'], [class*='reverse'], [class*='holo'], [class*='icon'], .badge"))) {
+        push(element.textContent);
+      }
+
+      return values;
+    }
+
     const offers = Array.from(document.querySelectorAll<HTMLTableRowElement>("tr[data-product-id]")).map((row) => {
       const sellerAnchor = row.querySelector<HTMLAnchorElement>("td.products-table__seller a[href]");
       const sellerDesktop =
@@ -242,6 +270,12 @@ async function extractDetail(page: Page): Promise<CardTraderDetailRaw> {
 
       const countryElement = row.querySelector<HTMLElement>("td.products-table__seller .flag-icon[data-original-title]");
       const descriptionElement = row.querySelector<HTMLElement>(".products-table__description small");
+      const descriptionText =
+        descriptionElement?.getAttribute("title") ??
+        descriptionElement?.textContent?.replace(/\s+/g, " ").trim() ??
+        null;
+      const finishCandidates = collectFinishCandidates(row, descriptionText);
+      const finishText = finishCandidates.length > 0 ? finishCandidates.join(" / ") : descriptionText;
       const priceElement = row.querySelector<HTMLElement>(".products-table__formatted-price");
       const quantityElement = row.querySelector<HTMLElement>(".input-group-text.products-table__quantity-form");
       const sourceOfferId = row.getAttribute("data-product-id");
@@ -264,6 +298,7 @@ async function extractDetail(page: Page): Promise<CardTraderDetailRaw> {
         priceText: priceElement?.textContent?.replace(/\s+/g, " ").trim() ?? null,
         languageText,
         conditionText,
+        finishText,
         sellerText,
         sellerCountry: countryElement?.getAttribute("data-original-title") ?? null,
         storeText: sellerText,
@@ -272,10 +307,9 @@ async function extractDetail(page: Page): Promise<CardTraderDetailRaw> {
         quantity,
         raw: {
           rowId,
-          descriptionText:
-            descriptionElement?.getAttribute("title") ??
-            descriptionElement?.textContent?.replace(/\s+/g, " ").trim() ??
-            null,
+          descriptionText,
+          finishCandidates,
+          finishText,
           gtmPrice: row.getAttribute("gtm-price"),
           gtmCurrency: row.getAttribute("gtm-currency")
         }
@@ -322,6 +356,10 @@ async function saveFailureScreenshot(page: Page, name: string): Promise<string |
   }
 }
 
+async function ensurePageEvaluateHelpers(page: Page): Promise<void> {
+  await page.evaluate("globalThis.__name = globalThis.__name || ((target) => target);").catch(() => undefined);
+}
+
 async function scrapeDetailCard(page: Page, queuedCard: QueuedCardTraderCard): Promise<ReturnType<typeof mapCardTraderCard>> {
   await page.goto(queuedCard.listing.detailUrl!, {
     waitUntil: "domcontentloaded",
@@ -333,12 +371,24 @@ async function scrapeDetailCard(page: Page, queuedCard: QueuedCardTraderCard): P
   await page.waitForSelector("tr[data-product-id]", {
     timeout: Math.min(8_000, monitorConfig.monitor.cardDetailTimeoutMs)
   }).catch(() => undefined);
-  await page.waitForLoadState("networkidle", {
-    timeout: Math.min(5_000, monitorConfig.monitor.cardDetailTimeoutMs)
-  }).catch(() => undefined);
-  await page.waitForTimeout(Math.min(250, getRequestDelayMs()));
+  await page.waitForTimeout(Math.min(150, getRequestDelayMs()));
+  await ensurePageEvaluateHelpers(page);
   const detail = await extractDetail(page);
   return mapCardTraderCard(queuedCard.listing, detail);
+}
+
+function mapListingFallbackCard(queuedCard: QueuedCardTraderCard): ReturnType<typeof mapCardTraderCard> {
+  return mapCardTraderCard(queuedCard.listing, {
+    name: queuedCard.listing.name,
+    setName: queuedCard.listing.setName,
+    setCode: queuedCard.listing.setCode,
+    year: queuedCard.listing.year,
+    number: queuedCard.listing.number,
+    rarity: queuedCard.listing.rarity,
+    imageUrl: queuedCard.listing.imageUrl,
+    offers: [],
+    raw: { fallbackFromListing: true }
+  });
 }
 
 export async function scrapeCardTrader(hooks?: SourceScraperHooks): Promise<SourceScrapeResult> {
@@ -430,6 +480,14 @@ export async function scrapeCardTrader(hooks?: SourceScraperHooks): Promise<Sour
             });
           } catch (error) {
             processedCards += 1;
+            const fallbackCard = mapListingFallbackCard(queuedCard);
+            results.push(fallbackCard);
+            await hooks?.onCardScraped?.(fallbackCard, {
+              source: "CARDTRADER",
+              processedCards,
+              totalCards,
+              cardIsNew: queuedCard.cardIsNew
+            });
             const screenshotPath = await saveFailureScreenshot(detailPage, currentName);
             const message = error instanceof Error ? error.message : "Unknown CardTrader detail error";
             errors.push(
@@ -445,6 +503,8 @@ export async function scrapeCardTrader(hooks?: SourceScraperHooks): Promise<Sour
             processedCards,
             totalCards
           });
+
+          await detailPage.waitForTimeout(getRequestDelayMs());
         }
       } finally {
         await detailPage.close().catch(() => undefined);

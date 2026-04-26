@@ -11,6 +11,10 @@ export const monitorStages = [
   "PAGINATING_CARDTRADER",
   "COLLECTING_CARDTRADER_CARDS",
   "SCRAPING_CARDTRADER_CARD_DETAILS",
+  "LOADING_MYPCARDS_RESULTS",
+  "PAGINATING_MYPCARDS",
+  "COLLECTING_MYPCARDS_CARDS",
+  "SCRAPING_MYPCARDS_CARD_DETAILS",
   "SAVING_RESULTS",
   "FINISHED",
   "FAILED"
@@ -31,6 +35,10 @@ export type RecentNewOfferSummary = {
   languageNormalized: string | null;
   conditionRaw: string | null;
   conditionNormalized: string | null;
+  finishRaw: string | null;
+  finishNormalized: string | null;
+  variantLabel: string | null;
+  finishTags: string[];
   priceCents: number;
   currency: string;
   priceBrlCents: number | null;

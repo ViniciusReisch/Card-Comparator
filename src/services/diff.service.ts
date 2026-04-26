@@ -4,6 +4,7 @@ import { OfferRepository } from "../db/repositories/offer.repository";
 import type { ScrapedCardResult } from "../domain/card.types";
 import type { RecentNewOfferSummary } from "../domain/monitor.types";
 import type { SourceKey, SourceScrapeStatus } from "../domain/source.types";
+import { extractOfferFinish } from "../normalizers/finish-normalizer";
 import { buildCanonicalCardKey, buildCanonicalOfferKey } from "../normalizers/offer-key";
 import { currencyConverter } from "./currency-converter";
 
@@ -65,6 +66,10 @@ export class DiffService {
     let newOffersFound = 0;
 
     for (const offer of card.offers) {
+      if (offer.source === "LIGA_POKEMON" && (offer.priceCents <= 0 || offer.currency === "UNKNOWN")) {
+        continue;
+      }
+
       const canonicalOfferKey = buildCanonicalOfferKey(offer);
       const { priceBrlCents, exchangeRate, exchangeRateDate } = currencyConverter.convertToBrl(
         offer.priceCents,
@@ -84,6 +89,9 @@ export class DiffService {
         languageNormalized: offer.languageNormalized,
         conditionRaw: offer.conditionRaw,
         conditionNormalized: offer.conditionNormalized,
+        finishRaw: offer.finishRaw ?? null,
+        finishNormalized: offer.finishNormalized ?? null,
+        variantLabel: offer.variantLabel ?? null,
         priceCents: offer.priceCents,
         currency: offer.currency,
         originalPriceCents: offer.priceCents,
@@ -108,6 +116,7 @@ export class DiffService {
       seenOfferIds.push(upserted.offer.id);
 
       if (upserted.wasInserted) {
+        const finish = extractOfferFinish(upserted.offer.raw_json);
         newOffersFound += 1;
         newOffers.push({
           id: upserted.offer.id,
@@ -122,6 +131,10 @@ export class DiffService {
           languageNormalized: upserted.offer.language_normalized,
           conditionRaw: upserted.offer.condition_raw,
           conditionNormalized: upserted.offer.condition_normalized,
+          finishRaw: upserted.offer.finish_raw ?? finish.finishRaw,
+          finishNormalized: upserted.offer.finish_normalized ?? finish.finishNormalized,
+          variantLabel: upserted.offer.variant_label ?? finish.variantLabel,
+          finishTags: upserted.offer.variant_label ? [upserted.offer.variant_label] : finish.finishTags,
           priceCents: upserted.offer.price_cents,
           currency: upserted.offer.currency,
           priceBrlCents: upserted.offer.price_brl_cents,

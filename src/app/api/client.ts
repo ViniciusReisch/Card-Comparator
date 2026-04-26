@@ -30,11 +30,83 @@ export type DashboardResponse = {
         errorMessage: string | null;
       }>;
     } | null;
+    notificationsSentLastRun: number;
+  };
+  notifications: {
+    providers: NotificationStatusResponse;
+    lastRunSentCount: number;
+    lastRunSentByProvider: {
+      ntfy: number;
+      telegram: number;
+    };
   };
   recentNewOffers: OfferItem[];
   distributions?: {
+    source: Array<{ source: string; count: number }>;
     language: Array<{ language: string; count: number }>;
     condition: Array<{ condition: string; count: number }>;
+  };
+};
+
+export type NotificationStatusResponse = {
+  ntfy: {
+    enabled: boolean;
+    configured: boolean;
+    destination: string | null;
+  };
+  telegram: {
+    enabled: boolean;
+    configured: boolean;
+    destination: string | null;
+  };
+};
+
+export type NotificationTestResponse = {
+  status: "sent" | "skipped";
+  results: Array<{
+    provider: "ntfy" | "telegram";
+    status: "sent" | "skipped" | "failed";
+    message: string;
+  }>;
+};
+
+export type AppSettingsResponse = {
+  monitor: {
+    intervalMinutes: number;
+    schedulerEnabled: boolean;
+  };
+  notifications: {
+    ntfy: {
+      enabled: boolean;
+      baseUrl: string;
+      topic: string;
+      priority: string;
+    };
+    telegram: {
+      enabled: boolean;
+      botTokenConfigured: boolean;
+      chatId: string;
+    };
+  };
+};
+
+export type AppSettingsUpdate = {
+  monitor?: {
+    intervalMinutes?: number;
+    schedulerEnabled?: boolean;
+  };
+  notifications?: {
+    ntfy?: {
+      enabled?: boolean;
+      baseUrl?: string;
+      topic?: string;
+      priority?: string;
+    };
+    telegram?: {
+      enabled?: boolean;
+      botToken?: string;
+      chatId?: string;
+    };
   };
 };
 
@@ -66,6 +138,8 @@ export type OfferItem = {
   conditionRaw: string | null;
   conditionNormalized: string | null;
   finishRaw: string | null;
+  finishNormalized: string | null;
+  variantLabel: string | null;
   finishTags: string[];
   priceCents: number;
   currency: string;
@@ -261,5 +335,17 @@ export const apiClient = {
   },
   resumeMonitor(): Promise<MonitorStatusResponse> {
     return request<MonitorStatusResponse>("/api/monitor/resume", { method: "POST" });
+  },
+  testNotifications(): Promise<NotificationTestResponse> {
+    return request<NotificationTestResponse>("/api/notifications/test", { method: "POST" });
+  },
+  getSettings(): Promise<AppSettingsResponse> {
+    return request<AppSettingsResponse>("/api/settings");
+  },
+  updateSettings(payload: AppSettingsUpdate): Promise<AppSettingsResponse> {
+    return request<AppSettingsResponse>("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    });
   }
 };

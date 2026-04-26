@@ -27,6 +27,10 @@ function stageLabel(stage: string): string {
     PAGINATING_CARDTRADER: "Resolvendo lista do CardTrader",
     COLLECTING_CARDTRADER_CARDS: "Catalogando cards do CardTrader",
     SCRAPING_CARDTRADER_CARD_DETAILS: "Coletando detalhes do CardTrader",
+    LOADING_MYPCARDS_RESULTS: "Abrindo MYP Cards",
+    PAGINATING_MYPCARDS: "Paginando resultados da MYP Cards",
+    COLLECTING_MYPCARDS_CARDS: "Catalogando cards da MYP Cards",
+    SCRAPING_MYPCARDS_CARD_DETAILS: "Coletando detalhes da MYP Cards",
     SAVING_RESULTS: "Salvando resultados",
     FINISHED: "Concluido",
     FAILED: "Falhou"
@@ -38,6 +42,7 @@ function stageLabel(stage: string): string {
 function sourceLabel(source: string | null): string {
   if (source === "LIGA_POKEMON") return "Liga Pokemon";
   if (source === "CARDTRADER") return "CardTrader";
+  if (source === "MYPCARDS") return "MYP Cards";
   return "Monitor";
 }
 

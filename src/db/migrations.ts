@@ -62,6 +62,27 @@ function applyDataMigrations(db: Database): void {
 
   // Fix language normalization bug: short pattern "en" matched "french" → ENGLISH
   // Re-normalize based on raw text for affected languages
+  const conditionRawFixes: Array<{ rawPattern: string; normalized: string }> = [
+    { rawPattern: "%(NM)%", normalized: "NM" },
+    { rawPattern: "%praticamente nova%", normalized: "NM" },
+    { rawPattern: "%(SP)%", normalized: "SP" },
+    { rawPattern: "%usada levemente%", normalized: "SP" },
+    { rawPattern: "%(MP)%", normalized: "MP" },
+    { rawPattern: "%usada moderadamente%", normalized: "MP" },
+    { rawPattern: "%(HP)%", normalized: "PL" },
+    { rawPattern: "%(PL)%", normalized: "PL" },
+    { rawPattern: "%muito usada%", normalized: "PL" },
+    { rawPattern: "%(PO)%", normalized: "PO" },
+    { rawPattern: "%danificada%", normalized: "PO" },
+    { rawPattern: "%(M)%", normalized: "M" },
+    { rawPattern: "%nova (m)%", normalized: "M" }
+  ];
+
+  for (const { rawPattern, normalized } of conditionRawFixes) {
+    db.prepare("UPDATE offers SET condition_normalized = ? WHERE condition_raw IS NOT NULL AND LOWER(condition_raw) LIKE ?")
+      .run(normalized, rawPattern);
+  }
+
   const languageRawFixes: Array<{ rawPattern: string; correctNormalized: string; wrongNormalized: string }> = [
     { rawPattern: "%french%",     correctNormalized: "FRENCH",   wrongNormalized: "ENGLISH" },
     { rawPattern: "%français%",   correctNormalized: "FRENCH",   wrongNormalized: "ENGLISH" },
@@ -75,6 +96,15 @@ function applyDataMigrations(db: Database): void {
       "UPDATE offers SET language_normalized = ? WHERE language_normalized = ? AND LOWER(language_raw) LIKE ?"
     ).run(correctNormalized, wrongNormalized, rawPattern);
   }
+
+  db.prepare(`
+    DELETE FROM cards
+    WHERE source = 'LIGA_POKEMON'
+      AND (
+        detail_url LIKE '%view=cards/search%'
+        OR name LIKE 'edid=%'
+      )
+  `).run();
 }
 
 export function runMigrations(): void {
@@ -91,12 +121,17 @@ export function runMigrations(): void {
   addColumnIfMissing(database, "offers", "exchange_rate_to_brl", "REAL");
   addColumnIfMissing(database, "offers", "exchange_rate_date", "TEXT");
   addColumnIfMissing(database, "offers", "first_seen_run_id", "INTEGER");
+  addColumnIfMissing(database, "offers", "finish_raw", "TEXT");
+  addColumnIfMissing(database, "offers", "finish_normalized", "TEXT");
+  addColumnIfMissing(database, "offers", "variant_label", "TEXT");
 
   addColumnIfMissing(database, "monitor_runs", "progress_snapshot_json", "TEXT");
   addColumnIfMissing(database, "monitor_runs", "duration_ms", "INTEGER");
   addColumnIfMissing(database, "monitor_runs", "estimated_total_cards", "INTEGER");
   addColumnIfMissing(database, "monitor_runs", "processed_cards", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing(database, "monitor_runs", "total_sources_done", "INTEGER NOT NULL DEFAULT 0");
+
+  addColumnIfMissing(database, "notification_deliveries", "payload_json", "TEXT");
 
   // Add new columns to price_history
   addColumnIfMissing(database, "price_history", "price_brl_cents", "INTEGER");

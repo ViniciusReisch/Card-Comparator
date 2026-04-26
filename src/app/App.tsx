@@ -5,10 +5,13 @@ import { CardDetailPage } from "./pages/CardDetailPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { OffersPage } from "./pages/OffersPage";
 import { RunsPage } from "./pages/RunsPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { BrowserNotificationBridge } from "./components/BrowserNotificationBridge";
 
 export function App() {
   return (
     <BrowserRouter>
+      <BrowserNotificationBridge />
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Navigate replace to="/dashboard" />} />
@@ -19,6 +22,8 @@ export function App() {
           <Route path="/cards" element={<CardsPage />} />
           <Route path="/cards/:id" element={<CardDetailPage />} />
           <Route path="/runs" element={<RunsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/ajustes" element={<SettingsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

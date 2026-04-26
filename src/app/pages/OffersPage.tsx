@@ -10,6 +10,7 @@ import {
 } from "../api/client";
 import { ConditionBadge } from "../components/ConditionBadge";
 import { FiltersBar, type FilterValues } from "../components/FiltersBar";
+import { FinishBadges } from "../components/FinishBadges";
 import { LanguageBadge } from "../components/LanguageBadge";
 import { NewOfferBadge } from "../components/NewOfferBadge";
 import { ScraperProgressBar } from "../components/ScraperProgressBar";
@@ -28,6 +29,7 @@ const defaultFilters: FilterValues = {
   year: "",
   search: ""
 };
+const OFFERS_PAGE_SIZE = 500;
 
 function matchesLiveFilters(offer: OfferItem, filters: FilterValues): boolean {
   if (filters.newOnly && !offer.isNew) return false;
@@ -63,7 +65,7 @@ function matchesLiveFilters(offer: OfferItem, filters: FilterValues): boolean {
   return true;
 }
 
-function buildOfferSearchParams(filters: FilterValues): URLSearchParams {
+function buildOfferSearchParams(filters: FilterValues, page = 1): URLSearchParams {
   const params = new URLSearchParams();
   params.set("newOnly", String(filters.newOnly));
   params.set("activeOnly", String(filters.activeOnly));
@@ -75,9 +77,26 @@ function buildOfferSearchParams(filters: FilterValues): URLSearchParams {
   if (filters.collection) params.set("setName", filters.collection);
   if (filters.year) params.set("year", filters.year);
   if (filters.search) params.set("search", filters.search);
-  params.set("pageSize", "100");
+  params.set("page", String(page));
+  params.set("pageSize", String(OFFERS_PAGE_SIZE));
   params.set("sort", "latest");
   return params;
+}
+
+function mergeOfferPages(current: OffersResponse | null, next: OffersResponse): OffersResponse {
+  if (!current) return next;
+
+  const seen = new Set<number>();
+  const items = [...current.items, ...next.items].filter((offer) => {
+    if (seen.has(offer.id)) return false;
+    seen.add(offer.id);
+    return true;
+  });
+
+  return {
+    ...next,
+    items
+  };
 }
 
 export function OffersPage() {
@@ -86,18 +105,24 @@ export function OffersPage() {
   const [applied, setApplied] = useState<FilterValues>(defaultFilters);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const previousRunningRef = useRef(false);
 
-  async function loadOffers(currentFilters = applied) {
+  async function loadOffers(currentFilters = applied, page = 1, append = false) {
     try {
-      setLoading(true);
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
-      const response = await apiClient.getOffers(buildOfferSearchParams(currentFilters));
-      setData(response);
+      const response = await apiClient.getOffers(buildOfferSearchParams(currentFilters, page));
+      setData((currentData) => (append ? mergeOfferPages(currentData, response) : response));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Falha ao carregar anuncios.");
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }
 
@@ -107,18 +132,19 @@ export function OffersPage() {
         items: [],
         pagination: {
           page: 1,
-          limit: 100,
+          limit: OFFERS_PAGE_SIZE,
           total: 0
         }
       };
 
+      const alreadyPresent = base.items.some((item) => item.id === offer.id);
       const withoutDuplicate = base.items.filter((item) => item.id !== offer.id);
       return {
         ...base,
         items: [offer, ...withoutDuplicate],
         pagination: {
           ...base.pagination,
-          total: withoutDuplicate.length + 1
+          total: alreadyPresent ? base.pagination.total : base.pagination.total + 1
         }
       };
     });
@@ -164,7 +190,14 @@ export function OffersPage() {
     void loadOffers(defaultFilters);
   }
 
+  function handleLoadMore() {
+    if (!data || loadingMore) return;
+    void loadOffers(applied, data.pagination.page + 1, true);
+  }
+
   const offers = useMemo<OfferItem[]>(() => data?.items ?? [], [data]);
+  const totalOffers = data?.pagination.total ?? 0;
+  const hasMore = offers.length < totalOffers;
 
   return (
     <section className="stack">
@@ -208,8 +241,8 @@ export function OffersPage() {
                 <div>
                   <div className="panel-title">Tabela de anuncios</div>
                   <div className="panel-sub">
-                    {data?.pagination.total ?? offers.length} itens carregados
-                    {applied.newOnly ? " · exibindo novos anuncios" : " · exibindo todos os anuncios ativos"}
+                    Exibindo {offers.length} de {totalOffers} anuncios
+                    {applied.newOnly ? " - exibindo novos anuncios" : " - exibindo todos os anuncios ativos"}
                   </div>
                 </div>
               </div>
@@ -224,6 +257,7 @@ export function OffersPage() {
                       <th>Fonte</th>
                       <th>Idioma</th>
                       <th>Estado</th>
+                      <th>Extra</th>
                       <th>Preco</th>
                       <th>Vendedor / Loja</th>
                       <th>Primeira aparicao</th>
@@ -237,21 +271,16 @@ export function OffersPage() {
 
                       return (
                         <tr key={offer.id} className={offer.isNew ? "is-new-row" : ""}>
-                          <td className="img-cell">
+                          <td className="img-cell" data-label="Imagem">
                             <div className="offer-thumb-shell">
                               {offer.imageUrl ? (
-                                <>
-                                  <img src={offer.imageUrl} alt={offer.cardName} className="offer-thumb-image" />
-                                  <div className="offer-thumb-preview">
-                                    <img src={offer.imageUrl} alt={offer.cardName} />
-                                  </div>
-                                </>
+                                <img src={offer.imageUrl} alt={offer.cardName} className="offer-thumb-image" />
                               ) : (
                                 <div className="img-fallback">R</div>
                               )}
                             </div>
                           </td>
-                          <td>
+                          <td data-label="Carta">
                             <div className="offer-row-main">
                               <Link to={`/cards/${offer.cardId}`} className="offer-row-title">
                                 {offer.cardName}
@@ -262,33 +291,36 @@ export function OffersPage() {
                               </div>
                             </div>
                           </td>
-                          <td>
+                          <td data-label="Colecao / Ano">
                             <span className="offer-row-muted">
                               {offer.setName ?? "-"}
-                              {offer.year ? ` · ${offer.year}` : ""}
+                              {offer.year ? ` - ${offer.year}` : ""}
                             </span>
                           </td>
-                          <td>
+                          <td data-label="Fonte">
                             <SourceBadge source={offer.source} />
                           </td>
-                          <td>
+                          <td data-label="Idioma">
                             <LanguageBadge value={offer.languageNormalized} />
                           </td>
-                          <td>
+                          <td data-label="Estado">
                             <ConditionBadge value={offer.conditionNormalized} />
                           </td>
-                          <td>
+                          <td data-label="Extra">
+                            <FinishBadges tags={offer.finishTags} raw={offer.finishRaw} />
+                          </td>
+                          <td data-label="Preco">
                             <span className="price-brl">{brl}</span>
                             {original ? <span className="price-original">{original}</span> : null}
                           </td>
-                          <td style={{ fontSize: "0.82rem" }}>
+                          <td data-label="Vendedor / Loja" style={{ fontSize: "0.82rem" }}>
                             {offer.storeName ?? offer.sellerName ?? <span className="muted">-</span>}
                             {offer.sellerCountry ? <div className="price-original">{offer.sellerCountry}</div> : null}
                           </td>
-                          <td style={{ fontSize: "0.78rem", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                          <td data-label="Primeira aparicao" style={{ fontSize: "0.78rem", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
                             {format(new Date(offer.firstSeenAt), "dd/MM/yyyy HH:mm")}
                           </td>
-                          <td>
+                          <td data-label="Link">
                             {offer.offerUrl ? (
                               <a href={offer.offerUrl} target="_blank" rel="noreferrer" className="table-link">
                                 Abrir
@@ -302,6 +334,19 @@ export function OffersPage() {
                     })}
                   </tbody>
                 </table>
+              </div>
+
+              <div className="table-footer">
+                <span className="muted">
+                  {hasMore
+                    ? `Ainda existem ${totalOffers - offers.length} anuncios para carregar.`
+                    : "Todos os anuncios deste filtro foram carregados."}
+                </span>
+                {hasMore ? (
+                  <button className="btn btn-secondary" type="button" onClick={handleLoadMore} disabled={loadingMore}>
+                    {loadingMore ? "Carregando..." : "Carregar mais anuncios"}
+                  </button>
+                ) : null}
               </div>
             </div>
           )}

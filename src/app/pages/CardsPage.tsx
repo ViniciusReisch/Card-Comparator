@@ -44,7 +44,7 @@ export function CardsPage() {
       <div className="page-content">
         <div className="stack">
           <div className="panel">
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: "0.5rem" }}>
+            <div className="cards-filter-grid">
               <div className="filter-group">
                 <label className="filter-label">Buscar por nome</label>
                 <input
@@ -72,9 +72,10 @@ export function CardsPage() {
                   <option value="">Todas</option>
                   <option value="LIGA_POKEMON">Liga Pokemon</option>
                   <option value="CARDTRADER">CardTrader</option>
+                  <option value="MYPCARDS">MYP Cards</option>
                 </select>
               </div>
-              <div className="filter-group" style={{ justifyContent: "flex-end", flexDirection: "row", alignItems: "flex-end" }}>
+              <div className="filter-group cards-filter-action">
                 <button className="btn btn-primary btn-sm" onClick={() => void loadCards()}>
                   Buscar
                 </button>

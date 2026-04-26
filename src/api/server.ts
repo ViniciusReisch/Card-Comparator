@@ -8,8 +8,11 @@ import { monitorService } from "../services/monitor.service";
 import { createDashboardRouter } from "./routes/dashboard.routes";
 import { createCardsRouter } from "./routes/cards.routes";
 import { createMonitorRouter } from "./routes/monitor.routes";
+import { createNotificationsRouter } from "./routes/notifications.routes";
 import { createOffersRouter } from "./routes/offers.routes";
+import { createPushRouter } from "./routes/push.routes";
 import { createRunsRouter } from "./routes/runs.routes";
+import { createSettingsRouter } from "./routes/settings.routes";
 
 const app = express();
 runMigrations();
@@ -42,8 +45,18 @@ app.get("/api/health", (_req, res) => {
 app.use("/api", createDashboardRouter());
 app.use("/api", createCardsRouter());
 app.use("/api", createMonitorRouter());
+app.use("/api", createNotificationsRouter());
 app.use("/api", createOffersRouter());
+app.use("/api", createPushRouter());
 app.use("/api", createRunsRouter());
+app.use("/api", createSettingsRouter());
+
+// Serve public/ assets (sw.js, manifest.json, icons) in dev mode.
+// In production these are already inside dist/ via Vite build copy.
+const publicDir = path.resolve(process.cwd(), "public");
+if (existsSync(publicDir)) {
+  app.use(express.static(publicDir));
+}
 
 const clientDistPath = path.resolve(__dirname, "../../dist");
 const clientIndexPath = path.join(clientDistPath, "index.html");

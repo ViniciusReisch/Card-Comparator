@@ -33,7 +33,22 @@ const conditionMap: Record<string, NormalizedCondition> = {
   ruim: "PO",
   damaged: "PO",
   danificado: "PO",
+  danificada: "PO",
+  dm: "PO",
   d: "PO"
+};
+
+const acronymMap: Record<string, NormalizedCondition> = {
+  M: "M",
+  NM: "NM",
+  EX: "EX",
+  SP: "SP",
+  MP: "MP",
+  HP: "PL",
+  PL: "PL",
+  PO: "PO",
+  DM: "PO",
+  D: "PO"
 };
 
 export function normalizeCondition(
@@ -50,13 +65,25 @@ export function normalizeCondition(
     return { conditionRaw, conditionNormalized: "UNKNOWN" };
   }
 
+  const explicitAcronym = conditionRaw?.match(/\b(NM|SP|MP|HP|PL|PO|EX|DM|M|D)\b/i)?.[1]?.toUpperCase();
+  if (explicitAcronym && acronymMap[explicitAcronym]) {
+    return { conditionRaw, conditionNormalized: acronymMap[explicitAcronym] };
+  }
+
   const direct = conditionMap[normalizedText];
   if (direct) {
     return { conditionRaw, conditionNormalized: direct };
   }
 
-  for (const [key, normalized] of Object.entries(conditionMap)) {
-    if (normalizedText.includes(key)) {
+  // Sort longest keys first so "near mint" matches before "mint"
+  const sortedEntries = Object.entries(conditionMap).sort(([a], [b]) => b.length - a.length);
+
+  for (const [key, normalized] of sortedEntries) {
+    const matches =
+      key.length <= 2
+        ? new RegExp(`\\b${key}\\b`).test(normalizedText)
+        : normalizedText.includes(key);
+    if (matches) {
       return { conditionRaw, conditionNormalized: normalized };
     }
   }

@@ -83,7 +83,11 @@ Windows:
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/run-local-prod.ps1
 powershell -ExecutionPolicy Bypass -File scripts/run-local-prod.ps1 -UsePm2
+npm run startup:install
+npm run startup:remove
 ```
+
+`npm run startup:install` registra uma tarefa do Windows para iniciar a aplicacao em producao quando o usuario fizer login. Ela chama `scripts/start-on-login.ps1`, usa a porta configurada no `.env`, evita abrir uma segunda instancia se a porta ja estiver ocupada e salva logs em `storage/startup-task.log`.
 
 Linux/macOS:
 

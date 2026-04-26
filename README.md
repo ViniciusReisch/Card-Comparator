@@ -52,12 +52,12 @@ Crie um `.env` a partir de `.env.example`.
 DATABASE_PATH=./storage/monitor.sqlite
 HEADLESS=true
 SLOW_MO=0
-REQUEST_DELAY_MS=1500
+REQUEST_DELAY_MS=6000
 LIGA_MAX_VER_MAIS_CLICKS=100
 CARDTRADER_MAX_PAGES=200
 MONITOR_STATUS_POLL_INTERVAL_MS=1500
 DETAIL_CONCURRENCY=1
-CARD_DETAIL_TIMEOUT_MS=20000
+CARD_DETAIL_TIMEOUT_MS=45000
 SCRAPER_FAST_MODE=false
 PORT=3333
 VITE_API_URL=
@@ -71,6 +71,13 @@ API_PUBLIC_URL=
 CLOUDFLARED_BIN=cloudflared
 CLOUDFLARE_TUNNEL_TARGET=http://localhost:3333
 CLOUDFLARE_TUNNEL_HOSTNAME=
+NTFY_ENABLED=false
+NTFY_BASE_URL=https://ntfy.sh
+NTFY_TOPIC=
+NTFY_PRIORITY=default
+TELEGRAM_ENABLED=false
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 ```
 
 Use `VITE_API_URL=` vazio para producao local e Cloudflare Tunnel. Assim o frontend chama `/api` na mesma origem publica. No modo `npm run dev`, o Vite faz proxy de `/api` para `http://localhost:3333`.
@@ -124,11 +131,20 @@ Scripts auxiliares:
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/run-local-prod.ps1
 powershell -ExecutionPolicy Bypass -File scripts/run-local-prod.ps1 -UsePm2
+npm run startup:install
 ```
 
 ```bash
 bash scripts/run-local-prod.sh
 bash scripts/run-local-prod.sh --pm2
+```
+
+No Windows, `npm run startup:install` cria uma tarefa no Agendador de Tarefas para iniciar a aplicacao em producao quando o usuario fizer login. A tarefa usa `scripts/start-on-login.ps1`, reaproveita o build existente e grava logs em `storage/startup-task.log`.
+
+Para remover:
+
+```powershell
+npm run startup:remove
 ```
 
 ## Execucao automatica em segundo plano
@@ -168,6 +184,39 @@ npm run pm2:stop
 ```
 
 O processo PM2 se chama `pokemon-rayquaza-monitor` e usa `ecosystem.config.js`.
+
+## Notificacoes no celular e desktop
+
+O projeto envia notificacoes quando um anuncio novo e salvo.
+
+Provider recomendado:
+
+```env
+NTFY_ENABLED=true
+NTFY_BASE_URL=https://ntfy.sh
+NTFY_TOPIC=seu-topico-secreto
+NTFY_PRIORITY=default
+```
+
+No celular, instale o app ntfy e assine o mesmo topico. No desktop, voce pode usar o web app do ntfy ou o Telegram Desktop, se ativar Telegram.
+
+Telegram opcional:
+
+```env
+TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=123456:ABC...
+TELEGRAM_CHAT_ID=123456789
+```
+
+Teste manual:
+
+```bash
+curl -X POST http://localhost:3333/api/notifications/test
+```
+
+O Dashboard mostra ntfy/Telegram habilitado ou desabilitado e quantas notificacoes foram enviadas na ultima execucao.
+
+Guia completo: [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md).
 
 ## Acesso pelo celular fora da rede local
 
@@ -220,6 +269,8 @@ O backend expoe:
 - `POST /api/monitor/run`
 - `POST /api/monitor/pause`
 - `POST /api/monitor/resume`
+- `GET /api/notifications/status`
+- `POST /api/notifications/test`
 
 O frontend usa **Server-Sent Events (SSE)** para atualizar:
 
@@ -254,6 +305,7 @@ Se a conexao SSE cair, a interface faz fallback para polling leve.
 
 - `DETAIL_CONCURRENCY=1` e o padrao seguro.
 - Pode subir para `2` ou `3` quando quiser acelerar com cuidado.
+- `REQUEST_DELAY_MS=6000` mantem uma pausa maior entre detalhes para reduzir risco de rate limit.
 - `CARD_DETAIL_TIMEOUT_MS` impede que um card lento trave a execucao inteira.
 - `SCRAPER_FAST_MODE=true` reduz delays, mas ainda mantem uma navegacao responsavel.
 - Cards novos entram primeiro na fila para a interface mostrar novidades mais cedo.

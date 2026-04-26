@@ -33,6 +33,24 @@ export const normalizedConditions = [
 
 export type NormalizedCondition = (typeof normalizedConditions)[number];
 
+export const normalizedFinishes = [
+  "NORMAL",
+  "FOIL",
+  "REVERSE_FOIL",
+  "FULL_ART",
+  "ALTERED_ART",
+  "POKEBALL_FOIL",
+  "MASTERBALL_FOIL",
+  "PROMO",
+  "UNLIMITED",
+  "UNLIMITED_FOIL",
+  "STAFF",
+  "OVERSIZE",
+  "UNKNOWN"
+] as const;
+
+export type NormalizedFinish = (typeof normalizedFinishes)[number];
+
 export type ScrapedOfferSeed = {
   source: SourceKey;
   sourceOfferId: string | null;
@@ -44,6 +62,9 @@ export type ScrapedOfferSeed = {
   languageNormalized: NormalizedLanguage;
   conditionRaw: string | null;
   conditionNormalized: NormalizedCondition;
+  finishRaw?: string | null;
+  finishNormalized?: NormalizedFinish;
+  variantLabel?: string | null;
   priceCents: number;
   currency: string;
   imageUrl: string | null;
@@ -67,6 +88,10 @@ export type OfferListItem = {
   languageNormalized: NormalizedLanguage | "UNKNOWN";
   conditionRaw: string | null;
   conditionNormalized: NormalizedCondition | "UNKNOWN";
+  finishRaw: string | null;
+  finishNormalized: NormalizedFinish | "UNKNOWN";
+  variantLabel: string | null;
+  finishTags: string[];
   priceCents: number;
   currency: string;
   priceBrlCents: number | null;

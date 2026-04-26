@@ -9,5 +9,8 @@ export function SourceBadge({ source }: SourceBadgeProps) {
   if (source === "CARDTRADER") {
     return <span className="badge badge-source-ct">CardTrader</span>;
   }
+  if (source === "MYPCARDS") {
+    return <span className="badge badge-source-myp">MYP Cards</span>;
+  }
   return <span className="badge">{source}</span>;
 }

@@ -30,12 +30,14 @@ REMOTE_ACCESS_MODE=cloudflare_tunnel
 APP_PUBLIC_URL=
 API_PUBLIC_URL=
 CLOUDFLARED_BIN=cloudflared
+CLOUDFLARE_TUNNEL_NAME=pokemon-rayquaza-monitor
 CLOUDFLARE_TUNNEL_TARGET=http://localhost:3333
 CLOUDFLARE_TUNNEL_HOSTNAME=
 ```
 
 - `APP_PUBLIC_URL`: URL publica final do web app, quando voce tiver uma.
 - `API_PUBLIC_URL`: deixe vazio se API e frontend ficam na mesma URL.
+- `CLOUDFLARE_TUNNEL_NAME`: nome local do tunnel no Cloudflare.
 - `CLOUDFLARE_TUNNEL_HOSTNAME`: dominio fixo, por exemplo `rayquaza.seudominio.com`.
 
 ## Teste rapido com TryCloudflare
@@ -74,10 +76,18 @@ cloudflared tunnel route dns pokemon-rayquaza-monitor rayquaza.seudominio.com
 cloudflared tunnel run pokemon-rayquaza-monitor
 ```
 
+Ou use o script do projeto:
+
+```powershell
+npm run tunnel:setup -- -Hostname rayquaza.seudominio.com
+npm run tunnel:run
+```
+
 Atualize o `.env`:
 
 ```env
 APP_PUBLIC_URL=https://rayquaza.seudominio.com
+CLOUDFLARE_TUNNEL_NAME=pokemon-rayquaza-monitor
 CLOUDFLARE_TUNNEL_HOSTNAME=rayquaza.seudominio.com
 ```
 
@@ -87,6 +97,8 @@ Rebuild recomendado depois de alterar variaveis de frontend:
 npm run build
 npm run pm2:restart
 ```
+
+No Windows, `scripts/start-on-login.ps1` sobe o tunnel junto com a aplicacao. Se `CLOUDFLARE_TUNNEL_HOSTNAME` estiver vazio, ele usa TryCloudflare temporario. Se estiver preenchido e existir `~/.cloudflared/config.yml`, ele sobe o named tunnel fixo.
 
 ## Observacoes
 

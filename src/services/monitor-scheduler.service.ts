@@ -1,13 +1,21 @@
 import { env } from "../config/env";
 import { monitorService } from "./monitor.service";
 import { monitorStatusService } from "./monitor-status.service";
+import { settingsService } from "./settings.service";
 
 export class MonitorSchedulerService {
-  private readonly intervalMs = env.MONITOR_INTERVAL_MINUTES * 60 * 1000;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private started = false;
   private enabled = env.ENABLE_BACKGROUND_SCHEDULER;
   private nextRunAt: string | null = null;
+
+  private get intervalMinutes(): number {
+    return settingsService.getMonitorIntervalMinutes();
+  }
+
+  private get intervalMs(): number {
+    return this.intervalMinutes * 60 * 1000;
+  }
 
   start(): void {
     if (this.started) {
@@ -15,6 +23,7 @@ export class MonitorSchedulerService {
     }
 
     this.started = true;
+    this.enabled = settingsService.getSchedulerEnabled();
     monitorStatusService.updateScheduler({
       schedulerEnabled: this.enabled,
       nextRunAt: null
@@ -31,12 +40,13 @@ export class MonitorSchedulerService {
       return;
     }
 
-    console.log(`[scheduler] background scheduler enabled; interval ${env.MONITOR_INTERVAL_MINUTES} minute(s)`);
+    console.log(`[scheduler] background scheduler enabled; interval ${this.intervalMinutes} minute(s)`);
     this.scheduleNextRun(this.intervalMs);
   }
 
   pause() {
     this.enabled = false;
+    settingsService.setSchedulerEnabled(false);
     this.clearTimer();
     this.nextRunAt = null;
     console.log("[scheduler] paused");
@@ -49,9 +59,37 @@ export class MonitorSchedulerService {
 
   resume() {
     this.enabled = true;
-    console.log(`[scheduler] resumed; next run in ${env.MONITOR_INTERVAL_MINUTES} minute(s)`);
+    settingsService.setSchedulerEnabled(true);
+    console.log(`[scheduler] resumed; next run in ${this.intervalMinutes} minute(s)`);
     this.scheduleNextRun(this.intervalMs);
 
+    return monitorStatusService.getStatus();
+  }
+
+  configure(input: { intervalMinutes?: number; schedulerEnabled?: boolean }) {
+    if (input.schedulerEnabled !== undefined) {
+      this.enabled = input.schedulerEnabled;
+    } else {
+      this.enabled = settingsService.getSchedulerEnabled();
+    }
+
+    if (!this.started) {
+      return monitorStatusService.updateScheduler({
+        schedulerEnabled: this.enabled,
+        nextRunAt: null
+      });
+    }
+
+    if (!this.enabled) {
+      this.clearTimer();
+      this.nextRunAt = null;
+      return monitorStatusService.updateScheduler({
+        schedulerEnabled: false,
+        nextRunAt: null
+      });
+    }
+
+    this.scheduleNextRun(this.intervalMs);
     return monitorStatusService.getStatus();
   }
 

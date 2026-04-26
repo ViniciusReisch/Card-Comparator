@@ -140,6 +140,33 @@ Pausa o agendador automatico. Nao cancela uma coleta que ja esteja em andamento.
 
 Retoma o agendador automatico e agenda a proxima execucao pelo intervalo configurado em `MONITOR_INTERVAL_MINUTES`.
 
+## `GET /api/notifications/status`
+
+Retorna status de configuracao dos providers de notificacao.
+
+```json
+{
+  "ntfy": {
+    "enabled": true,
+    "configured": true,
+    "destination": "meu-topico"
+  },
+  "telegram": {
+    "enabled": false,
+    "configured": false,
+    "destination": null
+  }
+}
+```
+
+## `POST /api/notifications/test`
+
+Envia uma notificacao de teste usando os providers habilitados.
+
+- `sent`: pelo menos um provider enviou.
+- `skipped`: nenhum provider habilitado/configurado enviou.
+- cada provider retorna `sent`, `skipped` ou `failed`.
+
 ## `GET /api/runs`
 
 Lista historico de execucoes incluindo resumo por fonte.

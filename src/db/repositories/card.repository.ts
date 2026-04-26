@@ -107,26 +107,45 @@ export class CardRepository {
       .get(id) as CardRecord | undefined;
   }
 
+  private findBySourceIdentity(input: Pick<CardRecordInput, "source" | "sourceCardId">): CardRecord | undefined {
+    if (!input.sourceCardId) {
+      return undefined;
+    }
+
+    return this.database
+      .prepare("SELECT * FROM cards WHERE source = ? AND source_card_id = ?")
+      .get(input.source, input.sourceCardId) as CardRecord | undefined;
+  }
+
+  private findByCanonicalKey(canonicalCardKey: string): CardRecord | undefined {
+    return this.database
+      .prepare("SELECT * FROM cards WHERE canonical_card_key = ?")
+      .get(canonicalCardKey) as CardRecord | undefined;
+  }
+
   findByIdentity(input: Pick<CardRecordInput, "source" | "sourceCardId" | "canonicalCardKey">): CardRecord | undefined {
     if (input.sourceCardId) {
-      const existing = this.database
-        .prepare("SELECT * FROM cards WHERE source = ? AND source_card_id = ?")
-        .get(input.source, input.sourceCardId) as CardRecord | undefined;
+      const existing = this.findBySourceIdentity(input);
 
       if (existing) {
         return existing;
       }
     }
 
-    return this.database
-      .prepare("SELECT * FROM cards WHERE canonical_card_key = ?")
-      .get(input.canonicalCardKey) as CardRecord | undefined;
+    return this.findByCanonicalKey(input.canonicalCardKey);
   }
 
   upsert(input: CardRecordInput): CardUpsertResult {
-    const existing = this.findByIdentity(input);
+    const existingByCanonical = this.findByCanonicalKey(input.canonicalCardKey);
+    const existingBySource = this.findBySourceIdentity(input);
+    const existing = existingByCanonical ?? existingBySource;
 
     if (existing) {
+      const sourceCardIdConflicts =
+        existingBySource && existingBySource.id !== existing.id;
+      const canonicalKeyConflicts =
+        existingByCanonical && existingByCanonical.id !== existing.id;
+
       this.database
         .prepare(
           `
@@ -151,6 +170,8 @@ export class CardRepository {
         )
         .run({
           ...input,
+          sourceCardId: sourceCardIdConflicts ? existing.source_card_id : input.sourceCardId,
+          canonicalCardKey: canonicalKeyConflicts ? existing.canonical_card_key : input.canonicalCardKey,
           id: existing.id
         });
 

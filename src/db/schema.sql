@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS offers (
   language_normalized TEXT,
   condition_raw TEXT,
   condition_normalized TEXT,
+  finish_raw TEXT,
+  finish_normalized TEXT,
+  variant_label TEXT,
   price_cents INTEGER NOT NULL,
   currency TEXT NOT NULL,
   original_price_cents INTEGER,
@@ -131,3 +134,40 @@ CREATE TABLE IF NOT EXISTS price_history (
 
 CREATE INDEX IF NOT EXISTS idx_price_history_offer_id
   ON price_history (offer_id, seen_at DESC);
+
+CREATE TABLE IF NOT EXISTS notification_deliveries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id INTEGER,
+  offer_id INTEGER,
+  provider TEXT NOT NULL,
+  destination TEXT,
+  status TEXT NOT NULL,
+  error_message TEXT,
+  payload_json TEXT,
+  sent_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_deliveries_run_offer_provider
+  ON notification_deliveries (run_id, offer_id, provider)
+  WHERE run_id IS NOT NULL AND offer_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_run_id
+  ON notification_deliveries (run_id, status);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  endpoint TEXT NOT NULL UNIQUE,
+  keys_p256dh TEXT NOT NULL,
+  keys_auth TEXT NOT NULL,
+  user_agent TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint
+  ON push_subscriptions (endpoint);
