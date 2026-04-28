@@ -115,6 +115,14 @@ async function maybeAcceptPopup(page: Page): Promise<void> {
   }
 }
 
+async function waitForListingCards(page: Page): Promise<void> {
+  await page
+    .waitForSelector("a[href*='view=cards/card'], a[href*='cards/card']", {
+      timeout: Math.min(15_000, monitorConfig.monitor.cardDetailTimeoutMs)
+    })
+    .catch(() => undefined);
+}
+
 async function ensurePageEvaluateHelpers(page: Page): Promise<void> {
   await page.evaluate("globalThis.__name = globalThis.__name || ((target) => target);").catch(() => undefined);
 }
@@ -250,31 +258,51 @@ async function fetchLigaListingPage(
   pageNumber: number
 ): Promise<string> {
   const key = (pageNumber - 1) * LIGA_PAGE_SIZE;
-  const response = await page.context().request.post("https://www.ligapokemon.com.br/ajax/cards/main.php", {
-    headers: {
-      "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-      "x-requested-with": "XMLHttpRequest",
-      referer: monitorConfig.sources.ligapokemon.searchUrl
-    },
-    form: {
-      opc: "nextPage",
-      page: String(pageNumber),
-      totalReg: config.totalReg,
-      search: config.search,
-      orderBy: config.orderBy,
-      tipo: config.tipo,
-      fav: config.fav,
-      iTCG: config.iTCG,
-      idPokemon: config.idPokemon,
-      key: String(key)
-    }
-  });
+  const result = await page.evaluate(
+    async ({ config, pageNumber, key }) => {
+      const body = new URLSearchParams({
+        opc: "nextPage",
+        page: String(pageNumber),
+        totalReg: config.totalReg,
+        search: config.search,
+        orderBy: config.orderBy,
+        tipo: config.tipo,
+        fav: config.fav,
+        iTCG: config.iTCG,
+        idPokemon: config.idPokemon,
+        key: String(key)
+      });
 
-  if (!response.ok()) {
-    throw new Error(`Liga Pokemon listing page ${pageNumber} failed with status ${response.status()}`);
+      const response = await fetch("/ajax/cards/main.php", {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "x-requested-with": "XMLHttpRequest"
+        },
+        body
+      });
+
+      return {
+        ok: response.ok,
+        status: response.status,
+        text: await response.text()
+      };
+    },
+    { config, pageNumber, key }
+  );
+
+  if (!result.ok) {
+    console.warn(`[ligapokemon] lote ${pageNumber} retornou status ${result.status}; encerrando paginacao`);
+    return "";
   }
 
-  const payload = await response.json().catch(async () => ({ html: await response.text() })) as { html?: unknown };
+  let payload: { html?: unknown };
+  try {
+    payload = JSON.parse(result.text) as { html?: unknown };
+  } catch {
+    payload = { html: result.text };
+  }
+
   return typeof payload.html === "string" ? payload.html : "";
 }
 
@@ -593,6 +621,7 @@ export async function scrapeLigaPokemon(hooks?: SourceScraperHooks): Promise<Sou
     });
     await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
     await maybeAcceptPopup(page);
+    await waitForListingCards(page);
 
     await hooks?.onStageChange?.({
       source: "LIGA_POKEMON",
