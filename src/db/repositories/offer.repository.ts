@@ -324,7 +324,7 @@ export class OfferRepository {
         .prepare(
           `UPDATE offers SET
               missing_count = missing_count + 1,
-              is_active = CASE WHEN missing_count + 1 >= 3 THEN 0 ELSE 1 END
+              is_active = CASE WHEN missing_count + 1 >= 1 THEN 0 ELSE 1 END
             WHERE source = ? AND is_active = 1`
         )
         .run(source);
@@ -336,7 +336,7 @@ export class OfferRepository {
       .prepare(
         `UPDATE offers SET
             missing_count = missing_count + 1,
-            is_active = CASE WHEN missing_count + 1 >= 3 THEN 0 ELSE 1 END
+            is_active = CASE WHEN missing_count + 1 >= 1 THEN 0 ELSE 1 END
           WHERE source = ? AND is_active = 1 AND id NOT IN (${placeholders})`
       )
       .run(source, ...seenOfferIds);

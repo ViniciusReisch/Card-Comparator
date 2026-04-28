@@ -53,10 +53,17 @@ export function FiltersBar({
             <label className="filter-checkbox">
               <input
                 type="checkbox"
-                checked={values.activeOnly}
-                onChange={(event) => update("activeOnly", event.target.checked)}
+                checked={!values.activeOnly}
+                onChange={(event) => {
+                  const includeSold = event.target.checked;
+                  onChange({
+                    ...values,
+                    activeOnly: !includeSold,
+                    newOnly: includeSold ? false : values.newOnly
+                  });
+                }}
               />
-              <span>Apenas ativos</span>
+              <span>Mostrar vendidos</span>
             </label>
           ) : null}
         </div>

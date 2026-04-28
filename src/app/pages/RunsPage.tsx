@@ -20,49 +20,56 @@ export function RunsPage() {
 
   return (
     <section className="stack">
-      <div className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Historico</p>
-            <h3>Execucoes do monitor</h3>
+      <div className="topbar">
+        <h2 className="topbar-title">Execucoes</h2>
+        <p className="topbar-sub">Historico das coletas e resultado por fonte.</p>
+      </div>
+
+      <div className="page-content">
+        <div className="panel">
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">Historico</p>
+              <h3>Execucoes do monitor</h3>
+            </div>
           </div>
-        </div>
 
-        {error ? <div className="notice notice-error">{error}</div> : null}
+          {error ? <div className="notice notice-error">{error}</div> : null}
 
-        {!data ? (
-          <div className="notice">Carregando execucoes...</div>
-        ) : (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Status</th>
-                  <th>Cards</th>
-                  <th>Ofertas</th>
-                  <th>Novas</th>
-                  <th>Detalhes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.items.map((run) => (
-                  <tr key={run.id}>
-                    <td>{format(new Date(run.startedAt), "dd/MM/yyyy HH:mm")}</td>
-                    <td>{run.status}</td>
-                    <td>{run.totalCardsFound}</td>
-                    <td>{run.totalOffersFound}</td>
-                    <td>{run.newOffersFound}</td>
-                    <td className="muted">
-                      {run.sources.map((source) => `${source.source}: ${source.status}`).join(" | ")}
-                      {run.errorMessage ? ` | ${run.errorMessage}` : ""}
-                    </td>
+          {!data ? (
+            <div className="notice">Carregando execucoes...</div>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Status</th>
+                    <th>Cards</th>
+                    <th>Ofertas</th>
+                    <th>Novas</th>
+                    <th>Detalhes</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {data.items.map((run) => (
+                    <tr key={run.id}>
+                      <td>{format(new Date(run.startedAt), "dd/MM/yyyy HH:mm")}</td>
+                      <td>{run.status}</td>
+                      <td>{run.totalCardsFound}</td>
+                      <td>{run.totalOffersFound}</td>
+                      <td>{run.newOffersFound}</td>
+                      <td className="muted">
+                        {run.sources.map((source) => `${source.source}: ${source.status}`).join(" | ")}
+                        {run.errorMessage ? ` | ${run.errorMessage}` : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );

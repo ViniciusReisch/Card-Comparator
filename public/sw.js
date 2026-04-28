@@ -15,8 +15,8 @@ self.addEventListener("push", (event) => {
   const options = {
     body: data.body ?? "",
     tag: data.tag ?? "rayquaza",
-    icon: data.icon ?? "/icon-192.png",
-    badge: "/icon-192.png",
+    icon: data.icon ?? "/notification-icon-192.png",
+    badge: "/notification-badge-96.png",
     image: data.image ?? undefined,
     data: { url: data.url ?? null },
     actions: data.url ? [{ action: "open", title: "\u{1F517} Abrir oferta" }] : [],

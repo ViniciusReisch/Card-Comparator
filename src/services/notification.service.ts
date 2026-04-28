@@ -440,7 +440,7 @@ export class NotificationService {
       body: payload.body,
       url: payload.url,
       tag: payload.tag ?? "rayquaza",
-      icon: payload.imageUrl ?? "/icon-192.png",
+      icon: "/notification-icon-192.png",
       image: payload.imageUrl ?? null
     });
 

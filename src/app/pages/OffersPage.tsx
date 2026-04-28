@@ -242,7 +242,8 @@ export function OffersPage() {
                   <div className="panel-title">Tabela de anuncios</div>
                   <div className="panel-sub">
                     Exibindo {offers.length} de {totalOffers} anuncios
-                    {applied.newOnly ? " - exibindo novos anuncios" : " - exibindo todos os anuncios ativos"}
+                    {applied.newOnly ? " - exibindo novos anuncios" : " - exibindo todos os anuncios"}
+                    {applied.activeOnly ? "" : " - incluindo vendidos"}
                   </div>
                 </div>
               </div>
@@ -287,7 +288,7 @@ export function OffersPage() {
                               </Link>
                               <div className="badge-row">
                                 {offer.isNew ? <NewOfferBadge /> : null}
-                                {!offer.isActive ? <span className="badge pill-neutral">Inativo</span> : null}
+                                {!offer.isActive ? <span className="badge badge-sold">Vendido</span> : null}
                               </div>
                             </div>
                           </td>

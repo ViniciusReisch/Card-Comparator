@@ -371,25 +371,35 @@ export function DashboardPage() {
                 {data.recentNewOffers.length === 0 ? (
                   <p className="muted">Nenhum anuncio novo no momento.</p>
                 ) : (
-                  <div className="table-list">
+                  <div className="table-list dashboard-offer-list">
                     {data.recentNewOffers.map((offer) => {
                       const brl = formatBrl(offer.priceBrlCents ?? (offer.currency === "BRL" ? offer.priceCents : null));
                       return (
-                        <div key={offer.id} className="list-row">
-                          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                            <div className="badge-row">
-                              <SourceBadge source={offer.source} />
-                              <LanguageBadge value={offer.languageNormalized} />
-                              <ConditionBadge value={offer.conditionNormalized} />
-                              {offer.isNew ? <NewOfferBadge /> : null}
+                        <div key={offer.id} className="list-row dashboard-offer-row">
+                          <div className="dashboard-offer-main">
+                            <div className="dashboard-offer-thumb">
+                              {offer.imageUrl ? (
+                                <img src={offer.imageUrl} alt={offer.cardName} />
+                              ) : (
+                                <div className="image-fallback">R</div>
+                              )}
                             </div>
-                            <span className="list-title">
-                              <Link to={`/cards/${offer.cardId}`}>{offer.cardName}</Link>
-                            </span>
-                            <span className="list-subtitle">
-                              {offer.setName ?? "Colecao n/d"}
-                              {offer.storeName || offer.sellerName ? ` - ${offer.storeName ?? offer.sellerName}` : ""}
-                            </span>
+                            <div className="dashboard-offer-copy">
+                              <div className="badge-row">
+                                <SourceBadge source={offer.source} />
+                                <LanguageBadge value={offer.languageNormalized} />
+                                <ConditionBadge value={offer.conditionNormalized} />
+                                {offer.isNew ? <NewOfferBadge /> : null}
+                                {!offer.isActive ? <span className="badge badge-sold">Vendido</span> : null}
+                              </div>
+                              <span className="list-title">
+                                <Link to={`/cards/${offer.cardId}`}>{offer.cardName}</Link>
+                              </span>
+                              <span className="list-subtitle">
+                                {offer.setName ?? "Colecao n/d"}
+                                {offer.storeName || offer.sellerName ? ` - ${offer.storeName ?? offer.sellerName}` : ""}
+                              </span>
+                            </div>
                           </div>
                           <div className="list-row-right">
                             <strong className="price-brl">{brl}</strong>

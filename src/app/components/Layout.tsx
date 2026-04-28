@@ -62,6 +62,14 @@ function NavIcon({ name }: { name: NavIconName }) {
 export function Layout() {
   return (
     <div className="app-shell">
+      <header className="mobile-appbar">
+        <img className="mobile-logo" src="/rayquaza-logo.png" alt="Rayquaza Monitor" />
+        <div className="mobile-appbar-copy">
+          <span>Rayquaza Monitor</span>
+          <small>Ofertas em tempo real</small>
+        </div>
+      </header>
+
       <aside className="sidebar">
         <div className="brand">
           <img className="brand-logo" src="/rayquaza-logo.png" alt="Rayquaza Monitor" />
@@ -82,10 +90,10 @@ export function Layout() {
 
         <div className="sidebar-section">
           <p className="sidebar-label">Fontes monitoradas</p>
-          <div style={{ padding: "0.5rem 0.75rem", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-            <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)" }}>Liga Pokemon</span>
-            <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)" }}>CardTrader</span>
-            <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)" }}>MYP Cards</span>
+          <div className="source-mini-list">
+            <span>Liga Pokemon</span>
+            <span>CardTrader</span>
+            <span>MYP Cards</span>
           </div>
         </div>
       </aside>

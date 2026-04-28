@@ -180,7 +180,7 @@ export function SettingsPage() {
     if (enabled) {
       new Notification("Rayquaza Monitor", {
         body: "Notificacoes do navegador ativadas.",
-        icon: "/icon-192.png"
+        icon: "/notification-icon-192.png"
       });
     }
   }
@@ -225,7 +225,7 @@ export function SettingsPage() {
     window.localStorage.setItem(BROWSER_NOTIFICATIONS_STORAGE_KEY, "true");
     new Notification("Rayquaza Monitor", {
       body: "Notificacoes do navegador ativadas.",
-      icon: "/icon-192.png"
+      icon: "/notification-icon-192.png"
     });
   }
 

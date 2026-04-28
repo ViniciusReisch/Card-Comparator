@@ -76,7 +76,7 @@ function showInPageNotification(offer: OfferItem): void {
       `${icon.source} ${sourceLabel(offer.source)}`
     ].join("\n"),
     tag: `offer-${offer.id}`,
-    icon: offer.imageUrl ?? "/icon-192.png",
+    icon: "/notification-icon-192.png",
     image: offer.imageUrl ?? undefined
   };
   const notification = new Notification(`${icon.fire} Novo anuncio: ${offer.cardName}`, options);

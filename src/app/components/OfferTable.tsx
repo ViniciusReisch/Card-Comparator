@@ -52,6 +52,7 @@ export function OfferTable({ title, offers }: OfferTableProps) {
                     <div className="badge-row">
                       <ConditionBadge value={offer.conditionNormalized} />
                       {offer.isNew ? <NewOfferBadge /> : null}
+                      {!offer.isActive ? <span className="badge badge-sold">Vendido</span> : null}
                     </div>
                   </td>
                   <td>

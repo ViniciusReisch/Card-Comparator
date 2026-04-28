@@ -31,29 +31,20 @@ export function SourceSelector({ sources, selected, onChange, disabled }: Source
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+    <div className="source-selector">
+      <div className="source-selector-row">
         {enabledSources.map((source) => {
           const isChecked = selected.includes(source.id);
           return (
             <label
               key={source.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.4rem",
-                cursor: disabled ? "not-allowed" : "pointer",
-                fontSize: "0.85rem",
-                color: "var(--text-secondary)",
-                opacity: disabled ? 0.6 : 1
-              }}
+              className={`source-choice${isChecked ? " is-selected" : ""}${disabled ? " is-disabled" : ""}`}
             >
               <input
                 type="checkbox"
                 checked={isChecked}
                 onChange={() => toggle(source.id)}
                 disabled={disabled}
-                style={{ accentColor: "var(--accent)", cursor: disabled ? "not-allowed" : "pointer" }}
               />
               {source.name}
             </label>
@@ -77,7 +68,7 @@ export function SourceSelector({ sources, selected, onChange, disabled }: Source
         </button>
       </div>
       {selected.length === 0 && (
-        <p className="muted" style={{ fontSize: "0.78rem", margin: 0 }}>
+        <p className="source-selector-warning">
           Selecione pelo menos uma loja para monitorar.
         </p>
       )}
