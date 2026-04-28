@@ -123,6 +123,22 @@ async function waitForListingCards(page: Page): Promise<void> {
     .catch(() => undefined);
 }
 
+async function assertLigaPokemonIsAccessible(page: Page): Promise<void> {
+  const accessDenied = await page
+    .evaluate(() => {
+      const title = document.title;
+      const bodyText = document.body?.innerText ?? "";
+      return /access denied/i.test(title) || /Error 1005|banned the autonomous system number|Cloudflare/i.test(bodyText);
+    })
+    .catch(() => false);
+
+  if (accessDenied) {
+    throw new Error(
+      "Liga Pokemon bloqueou o acesso da origem atual via Cloudflare/ASN. Configure LIGA_POKEMON_PROXY_URL com uma rota autorizada ou execute esta fonte fora da VPS bloqueada."
+    );
+  }
+}
+
 async function ensurePageEvaluateHelpers(page: Page): Promise<void> {
   await page.evaluate("globalThis.__name = globalThis.__name || ((target) => target);").catch(() => undefined);
 }
@@ -599,7 +615,8 @@ function mapListingFallbackCard(queuedCard: QueuedLigaCard): ReturnType<typeof m
 export async function scrapeLigaPokemon(hooks?: SourceScraperHooks): Promise<SourceScrapeResult> {
   const browser = await chromium.launch({
     headless: env.HEADLESS,
-    slowMo: monitorConfig.delays.slowMo
+    slowMo: monitorConfig.delays.slowMo,
+    ...(env.LIGA_POKEMON_PROXY_URL ? { proxy: { server: env.LIGA_POKEMON_PROXY_URL } } : {})
   });
   const errors: string[] = [];
 
@@ -621,6 +638,7 @@ export async function scrapeLigaPokemon(hooks?: SourceScraperHooks): Promise<Sou
     });
     await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
     await maybeAcceptPopup(page);
+    await assertLigaPokemonIsAccessible(page);
     await waitForListingCards(page);
 
     await hooks?.onStageChange?.({
