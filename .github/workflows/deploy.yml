@@ -1,0 +1,39 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H 204.168.248.207 >> ~/.ssh/known_hosts
+
+      - name: Deploy API
+        run: rsync -avz --delete dist-api/ root@204.168.248.207:/opt/rayquaza-monitor/dist-api/
+
+      - name: Deploy frontend
+        run: rsync -avz --delete dist/ root@204.168.248.207:/opt/rayquaza-monitor/dist/
+
+      - name: Restart monitor
+        run: ssh root@204.168.248.207 'pm2 restart pokemon-rayquaza-monitor && pm2 save'
