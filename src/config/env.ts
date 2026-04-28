@@ -42,7 +42,13 @@ const envSchema = z.object({
   MYP_ENABLED: booleanFromEnv(true),
   MYP_MAX_PAGES: z.coerce.number().int().min(1).default(100),
   MYP_REQUEST_DELAY_MS: z.coerce.number().int().min(0).default(1200),
-  MYP_CARD_TIMEOUT_MS: z.coerce.number().int().min(5_000).default(20_000)
+  MYP_CARD_TIMEOUT_MS: z.coerce.number().int().min(5_000).default(20_000),
+  // Feature flags
+  ENABLE_SCHEDULER: z.coerce.boolean().default(true),
+  ENABLE_BETA_SAFE_MODE: z.coerce.boolean().default(false),
+  ENABLE_ADMIN_DANGEROUS_ACTIONS: z.coerce.boolean().default(true),
+  // Para integração futura com HWheelsHub — desabilitado por padrão neste projeto
+  ENABLE_WHEELZ_SCRAPER: z.coerce.boolean().default(false)
 });
 
 export const env = envSchema.parse(process.env);

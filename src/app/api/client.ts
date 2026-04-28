@@ -233,6 +233,13 @@ export type MonitorStatusResponse = {
   lastUpdatedAt: string | null;
 };
 
+export type AppConfigResponse = {
+  betaSafeMode: boolean;
+  schedulerEnabled: boolean;
+  adminActionsEnabled: boolean;
+  sources: Array<{ id: string; name: string; enabled: boolean }>;
+};
+
 export type MonitorEventPayload =
   | {
       type: "status";
@@ -327,8 +334,11 @@ export const apiClient = {
   getMonitorStatus(): Promise<MonitorStatusResponse> {
     return request<MonitorStatusResponse>("/api/monitor/status");
   },
-  runMonitor(): Promise<MonitorStatusResponse> {
-    return request<MonitorStatusResponse>("/api/monitor/run", { method: "POST" });
+  runMonitor(options?: { sources?: string[] }): Promise<MonitorStatusResponse> {
+    return request<MonitorStatusResponse>("/api/monitor/run", {
+      method: "POST",
+      body: JSON.stringify({ sources: options?.sources ?? [] })
+    });
   },
   pauseMonitor(): Promise<MonitorStatusResponse> {
     return request<MonitorStatusResponse>("/api/monitor/pause", { method: "POST" });
@@ -347,5 +357,8 @@ export const apiClient = {
       method: "PUT",
       body: JSON.stringify(payload)
     });
+  },
+  getConfig(): Promise<AppConfigResponse> {
+    return request<AppConfigResponse>("/api/config");
   }
 };

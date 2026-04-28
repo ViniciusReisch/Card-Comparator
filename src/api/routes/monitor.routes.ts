@@ -17,9 +17,10 @@ export function createMonitorRouter(): Router {
     _req.on("end", cleanup);
   });
 
-  router.post("/monitor/run", (_req, res) => {
+  router.post("/monitor/run", (req, res) => {
     try {
-      const status = monitorService.startManualMonitor();
+      const { sources } = req.body as { sources?: string[] };
+      const status = monitorService.startManualMonitor({ sources });
       res.status(202).json(status);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown monitor error";

@@ -14,7 +14,13 @@ module.exports = {
       },
       env_production: {
         NODE_ENV: "production",
-        PORT: process.env.PORT || 3333
+        PORT: process.env.PORT || 3333,
+        ENABLE_SCHEDULER: "false",
+        ENABLE_BETA_SAFE_MODE: "true",
+        ENABLE_ADMIN_DANGEROUS_ACTIONS: "false",
+        RUN_ON_BOOT: "false",
+        HEADLESS: "true",
+        max_memory_restart: "1100M"
       },
       error_file: "./storage/pm2-error.log",
       out_file: "./storage/pm2-out.log",

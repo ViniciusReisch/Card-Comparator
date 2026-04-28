@@ -18,6 +18,11 @@ export class MonitorSchedulerService {
   }
 
   start(): void {
+    if (!env.ENABLE_SCHEDULER) {
+      console.log("[scheduler] Scheduler desabilitado via ENABLE_SCHEDULER=false. Nenhum agendamento automatico sera criado.");
+      return;
+    }
+
     if (this.started) {
       return;
     }

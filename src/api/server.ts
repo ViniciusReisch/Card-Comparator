@@ -13,6 +13,7 @@ import { createOffersRouter } from "./routes/offers.routes";
 import { createPushRouter } from "./routes/push.routes";
 import { createRunsRouter } from "./routes/runs.routes";
 import { createSettingsRouter } from "./routes/settings.routes";
+import { configRouter } from "./routes/config.routes";
 
 const app = express();
 runMigrations();
@@ -42,6 +43,7 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+app.use("/api/config", configRouter);
 app.use("/api", createDashboardRouter());
 app.use("/api", createCardsRouter());
 app.use("/api", createMonitorRouter());
@@ -50,6 +52,14 @@ app.use("/api", createOffersRouter());
 app.use("/api", createPushRouter());
 app.use("/api", createRunsRouter());
 app.use("/api", createSettingsRouter());
+
+// Middleware de proteção para rotas de scheduler em modo beta.
+// pause/resume não fazem sentido quando o scheduler está desabilitado.
+if (env.ENABLE_BETA_SAFE_MODE) {
+  app.use(["/api/monitor/pause", "/api/monitor/resume"], (_req, res) => {
+    res.status(403).json({ error: "Funcionalidade desabilitada no modo beta." });
+  });
+}
 
 // Serve public/ assets (sw.js, manifest.json, icons) in dev mode.
 // In production these are already inside dist/ via Vite build copy.
@@ -81,7 +91,11 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
 
 const server = app.listen(env.PORT, () => {
   console.log(`[api] listening on http://localhost:${env.PORT}`);
-  monitorSchedulerService.start();
+  if (env.ENABLE_SCHEDULER) {
+    monitorSchedulerService.start();
+  } else {
+    console.log("[api] scheduler desabilitado via ENABLE_SCHEDULER=false");
+  }
 });
 
 function shutdown(): void {

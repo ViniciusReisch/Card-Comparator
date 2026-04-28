@@ -14,6 +14,7 @@ let activeMonitorPromise: Promise<MonitorRunSummary> | null = null;
 export class MonitorService {
   private readonly diffService = new DiffService();
   private readonly runService = new RunService();
+  private pendingRun: { sources?: string[] } | null = null;
 
   isRunning(): boolean {
     return activeMonitorPromise !== null;
@@ -23,21 +24,25 @@ export class MonitorService {
     return monitorStatusService.getStatus();
   }
 
-  startManualMonitor(): MonitorStatusSnapshot {
-    return this.startMonitor();
+  startManualMonitor(options?: { sources?: string[] }): MonitorStatusSnapshot {
+    if (activeMonitorPromise) {
+      this.pendingRun = { sources: options?.sources };
+      return this.getStatus();
+    }
+    return this.startMonitor(options);
   }
 
   startScheduledMonitor(): MonitorStatusSnapshot {
     return this.startMonitor();
   }
 
-  private startMonitor(): MonitorStatusSnapshot {
+  private startMonitor(options?: { sources?: string[] }): MonitorStatusSnapshot {
     if (activeMonitorPromise) {
       throw new Error("A monitor run is already in progress.");
     }
 
     this.runService.assertCanRun();
-    activeMonitorPromise = this.executeRun();
+    activeMonitorPromise = this.executeRun(options);
     return this.getStatus();
   }
 
@@ -54,7 +59,7 @@ export class MonitorService {
     return activeMonitorPromise;
   }
 
-  private async executeRun(): Promise<MonitorRunSummary> {
+  private async executeRun(options?: { sources?: string[] }): Promise<MonitorRunSummary> {
     const run = this.runService.startRun();
     const previousRun = this.runService.getLatestCompletedRun();
     const previousSourceRuns = previousRun ? this.runService.listSourceRuns(previousRun.id) : [];
@@ -82,7 +87,7 @@ export class MonitorService {
     let finalStatus: MonitorRunSummary["status"] = "success";
     let errorMessage: string | null = null;
 
-    const sources = [
+    const allSources = [
       {
         key: "LIGA_POKEMON" as const,
         label: "Liga Pokemon",
@@ -99,6 +104,11 @@ export class MonitorService {
         scrape: scrapeMypCards
       }
     ];
+
+    const sources =
+      options?.sources && options.sources.length > 0
+        ? allSources.filter((s) => options.sources!.includes(s.key))
+        : allSources;
 
     try {
       await currencyConverter.initialize();
@@ -313,6 +323,12 @@ export class MonitorService {
       return summary;
     } finally {
       activeMonitorPromise = null;
+      const pending = this.pendingRun;
+      this.pendingRun = null;
+      if (pending) {
+        console.log("[monitor] iniciando pending run apos conclusao da run atual");
+        this.startMonitor(pending);
+      }
     }
   }
 }

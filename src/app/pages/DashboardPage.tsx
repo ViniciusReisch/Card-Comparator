@@ -7,10 +7,13 @@ import { LanguageBadge } from "../components/LanguageBadge";
 import { NewOfferBadge } from "../components/NewOfferBadge";
 import { ScraperProgressBar } from "../components/ScraperProgressBar";
 import { SourceBadge } from "../components/SourceBadge";
+import { SourceSelector } from "../components/SourceSelector";
 import { StatCard } from "../components/StatCard";
+import { useAppConfig } from "../hooks/useAppConfig";
 import { useMonitorStatus } from "../hooks/useMonitorStatus";
 
 export function DashboardPage() {
+  const config = useAppConfig();
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -18,8 +21,17 @@ export function DashboardPage() {
   const [togglingScheduler, setTogglingScheduler] = useState(false);
   const [testingNotifications, setTestingNotifications] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
+  const [pendingRun, setPendingRun] = useState(false);
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
   const { status } = useMonitorStatus();
   const previousRunningRef = useRef(false);
+
+  // Inicializa selectedSources com todas as fontes habilitadas quando config carregar
+  useEffect(() => {
+    if (config.sources.length > 0 && selectedSources.length === 0) {
+      setSelectedSources(config.sources.filter((s) => s.enabled).map((s) => s.id));
+    }
+  }, [config.sources]);
 
   async function loadDashboard() {
     try {
@@ -52,12 +64,23 @@ export function DashboardPage() {
   }, [status]);
 
   async function handleRunMonitor() {
+    if (selectedSources.length === 0) {
+      setError("Selecione pelo menos uma loja para monitorar.");
+      return;
+    }
+
     try {
       setTriggeringRun(true);
       setError(null);
-      await apiClient.runMonitor();
+      setPendingRun(false);
+      await apiClient.runMonitor({ sources: selectedSources });
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Falha ao iniciar monitoramento.");
+      // 409 = já existe uma run ativa; trata como pending amigável
+      if (requestError instanceof Error && /already in progress/i.test(requestError.message)) {
+        setPendingRun(true);
+      } else {
+        setError(requestError instanceof Error ? requestError.message : "Falha ao iniciar monitoramento.");
+      }
     } finally {
       setTriggeringRun(false);
     }
@@ -131,20 +154,35 @@ export function DashboardPage() {
               <p>Coleta e compara anuncios de cards Rayquaza em Liga Pokemon, CardTrader e MYP Cards.</p>
             </div>
             <div className="hero-control-stack">
+              <SourceSelector
+                sources={config.sources}
+                selected={selectedSources}
+                onChange={setSelectedSources}
+                disabled={triggeringRun || status?.isRunning}
+              />
               <div className="hero-actions">
-                <button className="btn btn-primary" onClick={handleRunMonitor} disabled={triggeringRun || status?.isRunning}>
+                <button className="btn btn-primary" onClick={handleRunMonitor} disabled={triggeringRun || status?.isRunning || selectedSources.length === 0}>
                   {status?.isRunning ? "Monitorando..." : triggeringRun ? "Iniciando..." : "Rodar monitoramento agora"}
                 </button>
-                <button className="btn btn-secondary" onClick={handleToggleScheduler} disabled={!status || togglingScheduler}>
-                  {status?.schedulerEnabled ? "Pausar agendador" : "Retomar agendador"}
-                </button>
+                {!config.betaSafeMode && (
+                  <button className="btn btn-secondary" onClick={handleToggleScheduler} disabled={!status || togglingScheduler}>
+                    {status?.schedulerEnabled ? "Pausar agendador" : "Retomar agendador"}
+                  </button>
+                )}
                 <Link className="btn btn-secondary" to="/offers">
                   Ver anuncios
                 </Link>
               </div>
-              <div className="hero-status-line">
-                Agendador {status?.schedulerEnabled ? "ativo" : "pausado"} - proxima: {nextRunLabel}
-              </div>
+              {!config.betaSafeMode && (
+                <div className="hero-status-line">
+                  Agendador {status?.schedulerEnabled ? "ativo" : "pausado"} - proxima: {nextRunLabel}
+                </div>
+              )}
+              {pendingRun && (
+                <div className="notice" style={{ marginTop: "0.5rem" }}>
+                  Ja existe uma execucao em andamento. Esta execucao sera iniciada automaticamente ao final.
+                </div>
+              )}
             </div>
           </div>
 

@@ -85,6 +85,7 @@ export function Layout() {
           <div style={{ padding: "0.5rem 0.75rem", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
             <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)" }}>Liga Pokemon</span>
             <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)" }}>CardTrader</span>
+            <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)" }}>MYP Cards</span>
           </div>
         </div>
       </aside>
